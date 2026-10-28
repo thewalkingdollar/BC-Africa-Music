@@ -19,6 +19,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index }) => {
     openLyricsStudio,
     setIsLyricsOpen,
     deleteTrack,
+    openArtistProfile,
   } = useAudio();
 
   const isCurrent = currentTrack?.id === track.id;
@@ -113,9 +114,17 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index }) => {
           >
             {track.title}
           </h3>
-          <p className="text-[11px] text-slate-400 truncate mt-0.5" title={track.artist}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openArtistProfile(track.ownerId, track.artist);
+            }}
+            className="text-[11px] text-slate-400 hover:text-sky-300 truncate mt-0.5 text-left transition-colors cursor-pointer block max-w-full hover:underline"
+            title={`View ${track.artist}'s profile`}
+          >
             {track.artist}
-          </p>
+          </button>
         </div>
 
         {/* Bottom meta & actions */}

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { LyricLine, Track, ViewMode } from '../types/music';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { LyricLine, Track, ViewMode, TrendingTrack } from '../types/music';
 import { INITIAL_TRACKS } from '../data/defaultTracks';
 import { generateAfricanTrackAudio } from '../utils/audioSynthesizer';
 import {
@@ -10,9 +10,24 @@ import {
   getAudioBlob,
   deleteAudioBlob,
 } from '../utils/indexedDB';
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  addDoc,
+  increment,
+} from 'firebase/firestore';
+import { db, auth, testConnection, handleFirestoreError, OperationType } from '../firebase/config';
 
 interface AudioContextType {
   tracks: Track[];
+  trendingTracks: TrendingTrack[];
+  plays24hMap: Record<string, number>;
   currentTrack: Track | null;
   isPlaying: boolean;
   currentTime: number;
@@ -32,6 +47,9 @@ interface AudioContextType {
   activeStudioTrack: Track | null;
   openLyricsStudio: (trackId?: string) => void;
   closeLyricsStudio: () => void;
+  selectedArtistId: string | null;
+  selectedArtistName: string | null;
+  openArtistProfile: (artistId?: string, artistName?: string) => void;
   isUploadModalOpen: boolean;
   setIsUploadModalOpen: (open: boolean) => void;
   searchQuery: string;
@@ -39,6 +57,7 @@ interface AudioContextType {
   selectedGenre: string;
   setSelectedGenre: (g: string) => void;
   playTrack: (track: Track) => Promise<void>;
+  recordTrackPlay: (track: Track) => Promise<void>;
   togglePlay: () => Promise<void>;
   pause: () => void;
   seek: (seconds: number) => void;
@@ -62,21 +81,24 @@ const audioUrlCache = new Map<string, string>();
 
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tracks, setTracks] = useState<Track[]>(INITIAL_TRACKS);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(INITIAL_TRACKS[0]);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(INITIAL_TRACKS[0].duration || 0);
+  const [duration, setDuration] = useState<number>(0);
   const [volume, setVolumeState] = useState<number>(0.85);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [playbackRate, setPlaybackRateState] = useState<number>(1);
   const [isLooping, setIsLooping] = useState<boolean>(false);
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
+  const [plays24hMap, setPlays24hMap] = useState<Record<string, number>>({});
 
   // UI state
   const [activeView, setActiveView] = useState<ViewMode>('discover');
   const [isLyricsOpen, setIsLyricsOpen] = useState<boolean>(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState<boolean>(false);
   const [activeStudioTrack, setActiveStudioTrack] = useState<Track | null>(null);
+  const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
+  const [selectedArtistName, setSelectedArtistName] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
@@ -88,9 +110,13 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const [analyserReady, setAnalyserReady] = useState<AnalyserNode | null>(null);
 
-  // Load custom tracks from IndexedDB on mount
+  // Validate connection and load custom tracks from IndexedDB & Firestore
   useEffect(() => {
     let mounted = true;
+
+    // Test connection on startup per Firebase guidelines
+    testConnection().catch((err) => console.warn('Connection check note:', err));
+
     async function loadTracks() {
       try {
         const storedTracks = await getCustomTracks();
@@ -107,15 +133,89 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               return t;
             })
           );
-          setTracks([...restoredTracks, ...INITIAL_TRACKS]);
+          setTracks(restoredTracks);
         }
       } catch (e) {
         console.error('Error loading stored tracks:', e);
       }
     }
     loadTracks();
+
+    // Listen to Firestore tracks collection with standardized error handling
+    const unsubscribeFirestore = onSnapshot(
+      collection(db, 'tracks'),
+      (snapshot) => {
+        if (!mounted) return;
+        const firestoreTracks: Track[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            title: data.title || 'Untitled Track',
+            artist: data.artist || 'Unknown Artist',
+            album: data.album || 'Single',
+            genre: data.genre || 'Afrobeats',
+            duration: Number(data.duration) || 180,
+            audioUrl: data.audioUrl || '',
+            coverUrl: data.coverUrl || '',
+            lyricsRaw: data.lyricsRaw || '',
+            lyricsSynced: data.lyricsSynced || [],
+            isCustomUpload: true,
+            uploadedAt: data.createdAt ? String(data.createdAt).split('T')[0] : new Date().toISOString().split('T')[0],
+            plays: Number(data.plays) || 0,
+            ownerId: data.ownerId || '',
+            ownerEmail: data.ownerEmail || '',
+            ownerName: data.ownerName || '',
+          };
+        });
+
+        // Merge firestore tracks with local tracks, preserving local blob audio URLs
+        setTracks((prev) => {
+          const localMap = new Map(prev.map((t) => [t.id, t]));
+          firestoreTracks.forEach((ft) => {
+            const existingLocal = localMap.get(ft.id);
+            if (existingLocal && existingLocal.audioUrl && existingLocal.audioUrl.startsWith('blob:')) {
+              localMap.set(ft.id, { ...ft, audioUrl: existingLocal.audioUrl, audioBlobKey: existingLocal.audioBlobKey });
+            } else {
+              localMap.set(ft.id, ft);
+            }
+          });
+          return Array.from(localMap.values());
+        });
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'tracks');
+      }
+    );
+
+    // Listen to stream plays within the last 24 hours for Trending Now calculations
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const playsQuery = query(
+      collection(db, 'plays'),
+      where('timestamp', '>=', twentyFourHoursAgo)
+    );
+
+    const unsubscribePlays = onSnapshot(
+      playsQuery,
+      (snapshot) => {
+        if (!mounted) return;
+        const counts: Record<string, number> = {};
+        snapshot.docs.forEach((d) => {
+          const data = d.data();
+          if (data.trackId) {
+            counts[data.trackId] = (counts[data.trackId] || 0) + 1;
+          }
+        });
+        setPlays24hMap(counts);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'plays');
+      }
+    );
+
     return () => {
       mounted = false;
+      unsubscribeFirestore();
+      unsubscribePlays();
     };
   }, []);
 
@@ -236,6 +336,33 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return generatedUrl;
   }, []);
 
+  const recordTrackPlay = useCallback(async (track: Track) => {
+    try {
+      const now = Date.now();
+      const currentUserId = auth.currentUser ? auth.currentUser.uid : null;
+      // 1. Add play event to 'plays' collection for 24-hour trending calculations
+      await addDoc(collection(db, 'plays'), {
+        trackId: track.id,
+        timestamp: now,
+        playedAt: new Date(now).toISOString(),
+        userId: currentUserId,
+        trackTitle: track.title,
+        artist: track.artist,
+      });
+
+      // 2. Increment track's total plays in Firestore if doc exists
+      const trackRef = doc(db, 'tracks', track.id);
+      await updateDoc(trackRef, {
+        plays: increment(1),
+      }).catch((e) => {
+        // Silently skip if track does not exist in Firestore (e.g. local-only blob)
+        console.debug('Increment track plays note:', e);
+      });
+    } catch (err) {
+      console.warn('Failed to record track play:', err);
+    }
+  }, []);
+
   const playTrack = useCallback(
     async (track: Track) => {
       setupWebAudio();
@@ -257,7 +384,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsPlaying(true);
         setDuration(track.duration || 0);
 
-        // Increment play count
+        // Record play event in Firestore & update all-time play count
+        recordTrackPlay(track);
+
+        // Increment local play count
         setTracks((prev) =>
           prev.map((t) => (t.id === track.id ? { ...t, plays: (t.plays || 0) + 1 } : t))
         );
@@ -265,7 +395,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.error('Audio play error:', err);
       }
     },
-    [setupWebAudio, resolveAudioUrl, playbackRate, isMuted, volume]
+    [setupWebAudio, resolveAudioUrl, playbackRate, isMuted, volume, recordTrackPlay]
   );
 
   const togglePlay = useCallback(async () => {
@@ -379,7 +509,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addCustomTrack = useCallback(
     async (trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>, audioBlob: Blob): Promise<Track> => {
-      const id = `custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const id = `bc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const objectUrl = URL.createObjectURL(audioBlob);
 
       const newTrack: Track = {
@@ -392,11 +522,37 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         uploadedAt: new Date().toISOString().split('T')[0],
       };
 
-      // Persist in IndexedDB
+      // Persist locally in IndexedDB for instant playback
       await saveAudioBlob(id, audioBlob);
       await saveTrackMetadata(newTrack);
 
-      setTracks((prev) => [newTrack, ...prev]);
+      // Persist in Firestore if authenticated
+      if (auth.currentUser) {
+        try {
+          const trackDocRef = doc(db, 'tracks', id);
+          await setDoc(trackDocRef, {
+            id,
+            title: newTrack.title,
+            artist: newTrack.artist,
+            album: newTrack.album || 'Single',
+            genre: newTrack.genre || 'Afrobeats',
+            duration: newTrack.duration,
+            audioUrl: newTrack.audioUrl || '',
+            coverUrl: newTrack.coverUrl || '',
+            lyricsRaw: newTrack.lyricsRaw || '',
+            lyricsSynced: newTrack.lyricsSynced || [],
+            ownerId: auth.currentUser.uid,
+            ownerEmail: auth.currentUser.email || '',
+            ownerName: newTrack.ownerName || auth.currentUser.displayName || newTrack.artist,
+            plays: 0,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `tracks/${id}`);
+        }
+      }
+
+      setTracks((prev) => [newTrack, ...prev.filter((t) => t.id !== id)]);
       return newTrack;
     },
     []
@@ -427,6 +583,20 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (target && target.isCustomUpload) {
         await saveTrackMetadata({ ...target, lyricsSynced: synced, lyricsRaw: rawLRC });
       }
+
+      // Sync updated lyrics with Firestore
+      if (auth.currentUser) {
+        try {
+          const trackDocRef = doc(db, 'tracks', trackId);
+          await updateDoc(trackDocRef, {
+            lyricsSynced: synced,
+            lyricsRaw: rawLRC,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn('Firestore track lyric sync note:', err);
+        }
+      }
     },
     [currentTrack, activeStudioTrack, tracks]
   );
@@ -437,6 +607,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (target?.isCustomUpload) {
         await deleteAudioBlob(trackId);
         await deleteTrackMetadata(trackId);
+      }
+
+      if (auth.currentUser) {
+        try {
+          await deleteDoc(doc(db, 'tracks', trackId));
+        } catch (err) {
+          console.warn('Firestore track deletion note:', err);
+        }
       }
 
       setTracks((prev) => prev.filter((t) => t.id !== trackId));
@@ -470,10 +648,43 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveView('discover');
   }, []);
 
+  const openArtistProfile = useCallback((artistId?: string, artistName?: string) => {
+    setSelectedArtistId(artistId || null);
+    setSelectedArtistName(artistName || null);
+    setActiveView('artist-profile');
+  }, []);
+
+  // Calculate trending tracks sorted by 24h play events, then total plays
+  const trendingTracks: TrendingTrack[] = useMemo(() => {
+    return tracks
+      .map((track) => {
+        const plays24h = plays24hMap[track.id] || 0;
+        return {
+          track,
+          plays24h,
+          rank: 0,
+        };
+      })
+      .sort((a, b) => {
+        // Sort primarily by plays in last 24h
+        if (b.plays24h !== a.plays24h) {
+          return b.plays24h - a.plays24h;
+        }
+        // Secondary tiebreaker: all-time plays
+        return (b.track.plays || 0) - (a.track.plays || 0);
+      })
+      .map((item, index) => ({
+        ...item,
+        rank: index + 1,
+      }));
+  }, [tracks, plays24hMap]);
+
   return (
     <AudioContext.Provider
       value={{
         tracks,
+        trendingTracks,
+        plays24hMap,
         currentTrack,
         isPlaying,
         currentTime,
@@ -493,6 +704,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         activeStudioTrack,
         openLyricsStudio,
         closeLyricsStudio,
+        selectedArtistId,
+        selectedArtistName,
+        openArtistProfile,
         isUploadModalOpen,
         setIsUploadModalOpen,
         searchQuery,
@@ -500,6 +714,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         selectedGenre,
         setSelectedGenre,
         playTrack,
+        recordTrackPlay,
         togglePlay,
         pause,
         seek,

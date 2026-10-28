@@ -44,6 +44,7 @@ export const BottomPlayer: React.FC = () => {
     setIsLyricsOpen,
     setIsNowPlayingOpen,
     openLyricsStudio,
+    openArtistProfile,
   } = useAudio();
 
   const [isHoveringSeek, setIsHoveringSeek] = useState(false);
@@ -106,9 +107,14 @@ export const BottomPlayer: React.FC = () => {
                   </span>
                 )}
               </div>
-              <span className="text-[11px] text-slate-400 truncate" title={currentTrack.artist}>
+              <button
+                type="button"
+                onClick={() => openArtistProfile(currentTrack.ownerId, currentTrack.artist)}
+                className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
+                title={`View ${currentTrack.artist}'s profile`}
+              >
                 {currentTrack.artist}
-              </span>
+              </button>
             </div>
 
             <button

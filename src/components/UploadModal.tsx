@@ -1,7 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { X, Upload, Music, Image as ImageIcon, Sparkles, Check, Sliders } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Upload, Music, Image as ImageIcon, Sparkles, Check, Sliders, Lock, Shield } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
+import { useAuth } from '../context/AuthContext';
 import { parseLRC, plainTextToLines } from '../utils/lrcParser';
+import { LyricLine } from '../types/music';
 
 const PRESET_COVERS = [
   'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
@@ -21,13 +23,24 @@ export const UploadModal: React.FC = () => {
     openLyricsStudio,
   } = useAudio();
 
+  const { user, profile, isCreator, isAdmin, setIsAuthModalOpen, setAuthModalMode } = useAuth();
+
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
-  const [artist, setArtist] = useState('');
+  const [artist, setArtist] = useState(profile?.artistStageName || profile?.displayName || '');
   const [album, setAlbum] = useState('BC Africa Single');
   const [genre, setGenre] = useState('Afrobeats');
   const [lyricsText, setLyricsText] = useState('');
   const [coverUrl, setCoverUrl] = useState(PRESET_COVERS[0]);
+
+  useEffect(() => {
+    if (profile?.artistStageName && !artist) {
+      setArtist(profile.artistStageName);
+    } else if (profile?.displayName && !artist) {
+      setArtist(profile.displayName);
+    }
+  }, [profile]);
+
   const [customCoverFile, setCustomCoverFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,6 +94,13 @@ export const UploadModal: React.FC = () => {
   };
 
   const handleSubmit = async (startSyncStudio = false) => {
+    if (!user) {
+      setIsUploadModalOpen(false);
+      setAuthModalMode('signup');
+      setIsAuthModalOpen(true);
+      return;
+    }
+
     if (!audioFile) {
       alert('Please select an audio file (MP3, WAV, etc.) to upload.');
       return;
@@ -94,16 +114,18 @@ export const UploadModal: React.FC = () => {
 
     try {
       // Parse lyrics if provided
-      let syncedLines: import('../types/music').LyricLine[] = [];
+      let syncedLines: LyricLine[] = [];
       if (lyricsText.trim()) {
         const hasTimestamps = /\[\d{1,2}:\d{2}/.test(lyricsText);
         syncedLines = hasTimestamps ? parseLRC(lyricsText) : plainTextToLines(lyricsText);
       }
 
+      const effectiveArtist = artist.trim() || profile?.artistStageName || profile?.displayName || user.displayName || 'BC Africa Artist';
+
       const newTrack = await addCustomTrack(
         {
           title: title.trim(),
-          artist: (artist.trim() || 'BC Africa Artist'),
+          artist: effectiveArtist,
           album: album.trim() || 'Single',
           genre,
           duration: duration || 180,
@@ -113,6 +135,9 @@ export const UploadModal: React.FC = () => {
           lyricsSynced: syncedLines,
           uploadedAt: new Date().toISOString().split('T')[0],
           fileSize: audioFile.size,
+          ownerId: user.uid,
+          ownerEmail: user.email || '',
+          ownerName: profile?.artistStageName || profile?.displayName || user.displayName || effectiveArtist,
         },
         audioFile
       );

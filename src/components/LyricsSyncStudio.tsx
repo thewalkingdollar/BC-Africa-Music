@@ -16,6 +16,7 @@ import {
   HelpCircle,
   Save,
   Music,
+  Mic2,
 } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
 import { LyricLine, Track } from '../types/music';
@@ -39,9 +40,10 @@ export const LyricsSyncStudio: React.FC = () => {
     seek,
     updateTrackLyrics,
     closeLyricsStudio,
+    setIsUploadModalOpen,
   } = useAudio();
 
-  const [selectedTrack, setSelectedTrack] = useState<Track>(currentTrack || tracks[0]);
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(currentTrack || (tracks.length > 0 ? tracks[0] : null));
   const [studioMode, setStudioMode] = useState<'live-sync' | 'fine-tune' | 'raw-text'>('live-sync');
   const [lines, setLines] = useState<LyricLine[]>([]);
   const [activeSyncIndex, setActiveSyncIndex] = useState<number>(0);
@@ -51,7 +53,13 @@ export const LyricsSyncStudio: React.FC = () => {
 
   const linesContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync internal lines when selected track changes
+  // Sync internal lines when selected track changes or becomes available
+  useEffect(() => {
+    if (!selectedTrack && tracks.length > 0) {
+      setSelectedTrack(currentTrack || tracks[0]);
+    }
+  }, [tracks, currentTrack, selectedTrack]);
+
   useEffect(() => {
     if (selectedTrack) {
       if (selectedTrack.lyricsSynced && selectedTrack.lyricsSynced.length > 0) {
@@ -63,15 +71,11 @@ export const LyricsSyncStudio: React.FC = () => {
       }
       setRawText(selectedTrack.lyricsRaw || '');
       setActiveSyncIndex(0);
+    } else {
+      setLines([]);
+      setRawText('');
     }
   }, [selectedTrack]);
-
-  // Keep selectedTrack in sync if currentTrack changes externally
-  useEffect(() => {
-    if (currentTrack && currentTrack.id !== selectedTrack?.id) {
-      // Keep selected track if user deliberately picked it, else sync
-    }
-  }, [currentTrack, selectedTrack]);
 
   // Keyboard shortcut for Spacebar tap-to-sync when in live sync mode
   const handleKeyDown = useCallback(
@@ -103,6 +107,7 @@ export const LyricsSyncStudio: React.FC = () => {
 
   // Ensure current track is playing when user wants audio feedback
   const ensurePlaying = async () => {
+    if (!selectedTrack) return;
     if (currentTrack?.id !== selectedTrack.id) {
       await playTrack(selectedTrack);
     } else if (!isPlaying) {
@@ -209,6 +214,7 @@ export const LyricsSyncStudio: React.FC = () => {
 
   // Save changes to track and persistence
   const handleSaveToTrack = async () => {
+    if (!selectedTrack) return;
     const rawLrc = formatToLRC(lines, {
       title: selectedTrack.title,
       artist: selectedTrack.artist,
@@ -219,6 +225,7 @@ export const LyricsSyncStudio: React.FC = () => {
   };
 
   const handleCopyLrc = () => {
+    if (!selectedTrack) return;
     const rawLrc = formatToLRC(lines, {
       title: selectedTrack.title,
       artist: selectedTrack.artist,
@@ -229,6 +236,7 @@ export const LyricsSyncStudio: React.FC = () => {
   };
 
   const handleDownloadLrc = () => {
+    if (!selectedTrack) return;
     const rawLrc = formatToLRC(lines, {
       title: selectedTrack.title,
       artist: selectedTrack.artist,
@@ -241,6 +249,26 @@ export const LyricsSyncStudio: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  if (!selectedTrack) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-sky-950/80 border border-sky-800 flex items-center justify-center text-sky-400 mx-auto mb-4 shadow-xl">
+          <Mic2 className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">BC Africa Lyrics Sync Studio</h2>
+        <p className="text-xs text-slate-400 mb-6 max-w-md mx-auto leading-relaxed">
+          There are currently no uploaded songs to sync. Upload an audio track (MP3, WAV, etc.) to start synchronizing lyrics with live tap-to-sync.
+        </p>
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="px-6 py-3 bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-bold rounded-xl shadow-lg text-xs cursor-pointer"
+        >
+          Upload Track Now
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 lg:px-8 py-6 pb-28">

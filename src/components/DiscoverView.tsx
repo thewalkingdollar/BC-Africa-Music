@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Play, Pause, Sparkles, Upload, LayoutGrid, List, Sliders, Mic2, Compass } from 'lucide-react';
+import { Play, Pause, Sparkles, Upload, LayoutGrid, List, Sliders, Mic2, Compass, UserPlus, Shield } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
+import { useAuth } from '../context/AuthContext';
 import { TrackCard } from './TrackCard';
 import { TrackTable } from './TrackTable';
+import { TrendingNow } from './TrendingNow';
 
 export const DiscoverView: React.FC = () => {
   const {
@@ -17,6 +19,8 @@ export const DiscoverView: React.FC = () => {
     setSelectedGenre,
     openLyricsStudio,
   } = useAudio();
+
+  const { user, profile, isCreator, isAdmin, setIsAuthModalOpen, setAuthModalMode } = useAuth();
 
   const [layoutMode, setLayoutMode] = useState<'grid' | 'table'>('grid');
 
@@ -38,8 +42,17 @@ export const DiscoverView: React.FC = () => {
     return matchesSearch && matchesGenre;
   });
 
-  const featuredTrack = tracks[0];
-  const isFeaturedPlaying = currentTrack?.id === featuredTrack?.id && isPlaying;
+  const featuredTrack = tracks.length > 0 ? tracks[0] : null;
+  const isFeaturedPlaying = featuredTrack && currentTrack?.id === featuredTrack.id && isPlaying;
+
+  const handleUploadClick = () => {
+    if (!user) {
+      setAuthModalMode('signup');
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setIsUploadModalOpen(true);
+  };
 
   return (
     <div className="space-y-8 pb-32">
@@ -58,8 +71,14 @@ export const DiscoverView: React.FC = () => {
           <div className="relative z-10 max-w-2xl space-y-4">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-400 bg-sky-950/80 px-2.5 py-1 rounded-full border border-sky-500/30">
-                Official BC Africa Streaming &amp; Sync Platform
+                BC Africa Music Platform
               </span>
+              {user && (
+                <span className="text-[10px] font-mono text-sky-300 bg-sky-900/60 px-2 py-0.5 rounded-full border border-sky-700/60 flex items-center gap-1">
+                  <Shield className="w-3 h-3 text-sky-400" />
+                  <span>{profile?.role === 'admin' ? 'Admin' : profile?.role === 'creator' ? 'Artist / Creator' : 'Listener'}</span>
+                </span>
+              )}
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-tight">
@@ -67,13 +86,13 @@ export const DiscoverView: React.FC = () => {
             </h1>
 
             <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-              Experience Afrobeats, Amapiano, and Highlife with synchronized karaoke-style lyrics.
-              Upload your own audio tracks and synchronize line-by-line in real-time.
+              Every track here is uploaded directly by creators and artists.
+              Upload your own audio tracks, and synchronize your lyrics live on the beat.
             </p>
 
             {/* Quick Actions */}
             <div className="pt-2 flex flex-wrap items-center gap-3">
-              {featuredTrack && (
+              {featuredTrack ? (
                 <button
                   onClick={() => {
                     if (currentTrack?.id === featuredTrack.id) togglePlay();
@@ -93,15 +112,38 @@ export const DiscoverView: React.FC = () => {
                     </>
                   )}
                 </button>
+              ) : (
+                <button
+                  onClick={handleUploadClick}
+                  className="flex items-center gap-2.5 px-6 py-3 bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-bold rounded-xl shadow-[0_0_25px_rgba(2,132,199,0.4)] transition-all hover:scale-105 active:scale-95 cursor-pointer text-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Upload Your First Song</span>
+                </button>
               )}
 
-              <button
-                onClick={() => setIsUploadModalOpen(true)}
-                className="flex items-center gap-2 px-5 py-3 bg-sky-950/60 hover:bg-sky-900 border border-sky-800 text-sky-200 font-semibold rounded-xl transition-all cursor-pointer text-sm"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Upload New Track</span>
-              </button>
+              {!user && (
+                <button
+                  onClick={() => {
+                    setAuthModalMode('signup');
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-3 bg-sky-950/80 hover:bg-sky-900 border border-sky-800 text-sky-200 font-semibold rounded-xl transition-all cursor-pointer text-sm"
+                >
+                  <UserPlus className="w-4 h-4 text-sky-400" />
+                  <span>Create Account &amp; Select Role</span>
+                </button>
+              )}
+
+              {user && (
+                <button
+                  onClick={handleUploadClick}
+                  className="flex items-center gap-2 px-5 py-3 bg-sky-950/60 hover:bg-sky-900 border border-sky-800 text-sky-200 font-semibold rounded-xl transition-all cursor-pointer text-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Upload Track</span>
+                </button>
+              )}
 
               <button
                 onClick={() => openLyricsStudio()}
@@ -114,6 +156,9 @@ export const DiscoverView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Trending Now Section (24h Real-Time Firestore Plays) */}
+      {!searchQuery && <TrendingNow />}
 
       {/* Filter and View Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">

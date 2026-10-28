@@ -18,6 +18,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({ tracks }) => {
     openLyricsStudio,
     setIsLyricsOpen,
     deleteTrack,
+    openArtistProfile,
   } = useAudio();
 
   return (
@@ -99,7 +100,17 @@ export const TrackTable: React.FC<TrackTableProps> = ({ tracks }) => {
                       >
                         {track.title}
                       </p>
-                      <p className="text-[11px] text-slate-400 truncate">{track.artist}</p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openArtistProfile(track.ownerId, track.artist);
+                        }}
+                        className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
+                        title={`View ${track.artist}'s profile`}
+                      >
+                        {track.artist}
+                      </button>
                     </div>
                   </div>
                 </td>

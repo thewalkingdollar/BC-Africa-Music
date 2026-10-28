@@ -40,6 +40,7 @@ export const NowPlayingModal: React.FC = () => {
     isNowPlayingOpen,
     setIsNowPlayingOpen,
     openLyricsStudio,
+    openArtistProfile,
   } = useAudio();
 
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
@@ -154,7 +155,17 @@ export const NowPlayingModal: React.FC = () => {
               <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate">
                 {currentTrack.title}
               </h2>
-              <p className="text-sm text-sky-300/80 truncate mt-0.5">{currentTrack.artist}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNowPlayingOpen(false);
+                  openArtistProfile(currentTrack.ownerId, currentTrack.artist);
+                }}
+                className="text-sm text-sky-300 hover:text-sky-200 truncate mt-0.5 text-left transition-colors cursor-pointer hover:underline block"
+                title={`View ${currentTrack.artist}'s profile`}
+              >
+                {currentTrack.artist}
+              </button>
               <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400">
                 <span>{currentTrack.genre}</span>
                 <span>·</span>

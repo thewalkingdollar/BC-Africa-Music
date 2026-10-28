@@ -21,6 +21,9 @@ export interface Track {
   isFavorite?: boolean;
   audioBlobKey?: string;
   fileSize?: number;
+  ownerId?: string;
+  ownerEmail?: string;
+  ownerName?: string;
 }
 
 export interface Playlist {
@@ -32,4 +35,39 @@ export interface Playlist {
   createdAt: string;
 }
 
-export type ViewMode = 'discover' | 'library' | 'my-uploads' | 'favorites' | 'lyrics-studio';
+export type UserRole = 'listener' | 'creator' | 'admin';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  role: UserRole;
+  bio?: string;
+  artistStageName?: string;
+  country?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface TrendingTrack {
+  track: Track;
+  plays24h: number;
+  rank: number;
+}
+
+export interface ArtistProfile {
+  id: string; // artist user UID
+  displayName: string;
+  artistStageName: string;
+  bio: string;
+  country: string;
+  photoURL?: string;
+  isVerified?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type ViewMode = 'discover' | 'library' | 'my-uploads' | 'favorites' | 'lyrics-studio' | 'artist-profile';
+
+
