@@ -1,0 +1,6 @@
+{
+  "name": "BC Africa Music",
+  "description": "Stream, upload, and sync lyrics for African and global music with the signature BC Africa player.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
