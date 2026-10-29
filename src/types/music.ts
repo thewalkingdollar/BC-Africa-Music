@@ -4,6 +4,8 @@ export interface LyricLine {
   text: string;
 }
 
+export type TrackStatus = 'pending_review' | 'approved' | 'rejected';
+
 export interface Track {
   id: string;
   title: string;
@@ -24,6 +26,11 @@ export interface Track {
   ownerId?: string;
   ownerEmail?: string;
   ownerName?: string;
+  // Quality & Editorial Review workflow
+  status?: TrackStatus;
+  reviewerNotes?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
 }
 
 export interface Playlist {
@@ -35,7 +42,7 @@ export interface Playlist {
   createdAt: string;
 }
 
-export type UserRole = 'listener' | 'creator' | 'admin';
+export type UserRole = 'listener' | 'creator' | 'editor' | 'reviewer' | 'admin' | 'super_admin';
 
 export interface UserProfile {
   uid: string;
@@ -68,6 +75,75 @@ export interface ArtistProfile {
   updatedAt?: string;
 }
 
-export type ViewMode = 'discover' | 'library' | 'my-uploads' | 'favorites' | 'lyrics-studio' | 'artist-profile';
+export type PlatformThemeId =
+  | 'bc-blue'
+  | 'midnight-neon'
+  | 'sahara-gold'
+  | 'lagos-emerald'
+  | 'crimson-rhythm'
+  | 'amapiano-violet';
 
+export type GlowLevel = 'subtle' | 'balanced' | 'vibrant';
 
+export interface PlatformSettings {
+  theme: PlatformThemeId;
+  customAccent?: string;
+  glowLevel: GlowLevel;
+  advertsEnabled: boolean;
+  adFrequencyTracks: number;
+  adTitle: string;
+  sponsorName: string;
+  adDescription: string;
+  adBannerUrl: string;
+  adAudioUrl?: string;
+  adCtaText: string;
+  adLinkUrl: string;
+  skipAfterSeconds: number;
+  totalAdImpressions?: number;
+  artistRoyaltySharePercent?: number; // e.g. 70 (%)
+  estimatedCpmRate?: number; // e.g. 4.50 ($)
+  announcementEnabled?: boolean;
+  announcementText?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface ArtistTip {
+  id: string;
+  artistId: string;
+  trackId?: string;
+  amount: number;
+  currency: string;
+  senderName: string;
+  senderEmail?: string;
+  message?: string;
+  createdAt: string;
+  timestamp: number;
+}
+
+export type PayoutStatus = 'pending' | 'processing' | 'paid' | 'rejected';
+
+export interface PayoutRequest {
+  id: string;
+  artistId: string;
+  artistName: string;
+  artistEmail: string;
+  amount: number;
+  paymentMethod: string;
+  accountDetails: string;
+  status: PayoutStatus;
+  requestedAt: string;
+  processedAt?: string;
+  adminNotes?: string;
+}
+
+export type ViewMode =
+  | 'discover'
+  | 'library'
+  | 'my-uploads'
+  | 'favorites'
+  | 'lyrics-studio'
+  | 'artist-profile'
+  | 'super-panel'
+  | 'review-queue'
+  | 'artist-analytics';

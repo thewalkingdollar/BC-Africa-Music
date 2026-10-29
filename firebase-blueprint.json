@@ -9,7 +9,7 @@
         "email": { "type": "string", "maxLength": 256 },
         "displayName": { "type": "string", "maxLength": 100 },
         "photoURL": { "type": "string", "maxLength": 512 },
-        "role": { "type": "string", "enum": ["listener", "creator", "admin"] },
+        "role": { "type": "string", "enum": ["listener", "creator", "editor", "reviewer", "admin", "super_admin"] },
         "bio": { "type": "string", "maxLength": 500 },
         "artistStageName": { "type": "string", "maxLength": 100 },
         "country": { "type": "string", "maxLength": 80 },
@@ -20,7 +20,7 @@
     },
     "Track": {
       "title": "Track",
-      "description": "User uploaded music track with synchronized lyrics",
+      "description": "User uploaded music track with synchronized lyrics and review status",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -35,11 +35,42 @@
         "ownerId": { "type": "string", "maxLength": 128 },
         "ownerEmail": { "type": "string", "maxLength": 256 },
         "ownerName": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["pending_review", "approved", "rejected"] },
+        "reviewerNotes": { "type": "string", "maxLength": 1000 },
+        "reviewedBy": { "type": "string", "maxLength": 256 },
+        "reviewedAt": { "type": "string", "maxLength": 64 },
         "plays": { "type": "number" },
         "createdAt": { "type": "string", "maxLength": 64 },
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "title", "artist", "ownerId", "audioUrl"]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Global platform theme and in-stream advertising configuration",
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string", "maxLength": 50 },
+        "customAccent": { "type": "string", "maxLength": 20 },
+        "glowLevel": { "type": "string", "enum": ["subtle", "balanced", "vibrant"] },
+        "advertsEnabled": { "type": "boolean" },
+        "adFrequencyTracks": { "type": "number" },
+        "adTitle": { "type": "string", "maxLength": 200 },
+        "sponsorName": { "type": "string", "maxLength": 100 },
+        "adDescription": { "type": "string", "maxLength": 500 },
+        "adBannerUrl": { "type": "string", "maxLength": 2048 },
+        "adAudioUrl": { "type": "string", "maxLength": 2048 },
+        "adCtaText": { "type": "string", "maxLength": 60 },
+        "adLinkUrl": { "type": "string", "maxLength": 2048 },
+        "skipAfterSeconds": { "type": "number" },
+        "totalAdImpressions": { "type": "number" },
+        "artistRoyaltySharePercent": { "type": "number" },
+        "estimatedCpmRate": { "type": "number" },
+        "announcementEnabled": { "type": "boolean" },
+        "announcementText": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "updatedBy": { "type": "string", "maxLength": 256 }
+      }
     },
     "Admin": {
       "title": "Admin",
@@ -48,7 +79,7 @@
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
         "email": { "type": "string", "maxLength": 256 },
-        "role": { "type": "string", "enum": ["admin"] },
+        "role": { "type": "string", "enum": ["admin", "super_admin"] },
         "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["uid", "email", "role"]
@@ -63,7 +94,8 @@
         "playedAt": { "type": "string", "maxLength": 64 },
         "userId": { "type": "string", "maxLength": 128 },
         "trackTitle": { "type": "string", "maxLength": 150 },
-        "artist": { "type": "string", "maxLength": 120 }
+        "artist": { "type": "string", "maxLength": 120 },
+        "artistId": { "type": "string", "maxLength": 128 }
       },
       "required": ["trackId", "timestamp"]
     },
@@ -83,12 +115,49 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "displayName", "artistStageName", "createdAt"]
+    },
+    "ArtistTip": {
+      "title": "ArtistTip",
+      "description": "Direct fan tip and patronage payment to an artist",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "artistId": { "type": "string", "maxLength": 128 },
+        "trackId": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderEmail": { "type": "string", "maxLength": 256 },
+        "message": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "artistId", "amount", "senderName", "createdAt", "timestamp"]
+    },
+    "PayoutRequest": {
+      "title": "PayoutRequest",
+      "description": "Monetization and royalty payout withdrawal request by artist",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "artistId": { "type": "string", "maxLength": 128 },
+        "artistName": { "type": "string", "maxLength": 100 },
+        "artistEmail": { "type": "string", "maxLength": 256 },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "maxLength": 50 },
+        "accountDetails": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["pending", "processing", "paid", "rejected"] },
+        "requestedAt": { "type": "string", "maxLength": 64 },
+        "processedAt": { "type": "string", "maxLength": 64 },
+        "adminNotes": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "artistId", "amount", "paymentMethod", "accountDetails", "status", "requestedAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
-      "description": "User account profiles with roles (listener, creator, admin)"
+      "description": "User account profiles with roles (listener, creator, editor, reviewer, admin, super_admin)"
     },
     "/artists/{artistId}": {
       "schema": "ArtistProfile",
@@ -96,7 +165,11 @@
     },
     "/tracks/{trackId}": {
       "schema": "Track",
-      "description": "User uploaded songs with synchronized lyrics"
+      "description": "User uploaded songs with synchronized lyrics and review lifecycle"
+    },
+    "/settings/{settingId}": {
+      "schema": "PlatformSettings",
+      "description": "Global platform theme and in-stream advertising configuration"
     },
     "/admins/{adminId}": {
       "schema": "Admin",
@@ -105,6 +178,14 @@
     "/plays/{playId}": {
       "schema": "PlayEvent",
       "description": "Stream play events for trending songs"
+    },
+    "/tips/{tipId}": {
+      "schema": "ArtistTip",
+      "description": "Direct fan tips and listener patronage for artists"
+    },
+    "/payouts/{payoutId}": {
+      "schema": "PayoutRequest",
+      "description": "Artist royalty and monetization payout requests"
     }
   }
 }

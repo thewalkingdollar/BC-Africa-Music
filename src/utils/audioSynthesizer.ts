@@ -5,7 +5,7 @@
  * real musical sound offline and sandboxed!
  */
 
-interface TrackStyle {
+export interface TrackStyle {
   bpm: number;
   rootFreq: number; // e.g. 130.81 (C3)
   scale: number[]; // semitone offsets
@@ -13,7 +13,44 @@ interface TrackStyle {
   duration: number; // in seconds
 }
 
-export async function generateAfricanTrackAudio(styleConfig: TrackStyle): Promise<string> {
+export function trackToStyleConfig(track: { genre?: string; duration?: number }): TrackStyle {
+  const g = (track.genre || '').toLowerCase();
+  let style: TrackStyle['style'] = 'afrobeats';
+  let bpm = 104;
+  let rootFreq = 130.81; // C3
+  let scale = [0, 2, 4, 7, 9]; // Major pentatonic
+
+  if (g.includes('amapiano')) {
+    style = 'amapiano';
+    bpm = 113;
+    rootFreq = 110.0; // A2 deep bass
+    scale = [0, 3, 5, 7, 10]; // Minor pentatonic
+  } else if (g.includes('highlife')) {
+    style = 'highlife';
+    bpm = 118;
+    rootFreq = 146.83; // D3
+    scale = [0, 2, 4, 5, 7, 9, 11]; // Major
+  } else if (g.includes('soul') || g.includes('r&b')) {
+    style = 'afrosoul';
+    bpm = 92;
+    rootFreq = 123.47; // B2
+    scale = [0, 2, 3, 5, 7, 9, 10]; // Dorian
+  }
+
+  return {
+    bpm,
+    rootFreq,
+    scale,
+    style,
+    duration: Math.max(30, Math.min(track.duration || 120, 180)),
+  };
+}
+
+export async function generateAfricanTrackAudio(input: TrackStyle | { genre?: string; duration?: number }): Promise<string> {
+  const styleConfig: TrackStyle = 'bpm' in input && 'rootFreq' in input
+    ? input
+    : trackToStyleConfig(input);
+
   const sampleRate = 44100;
   const duration = Math.min(styleConfig.duration, 180); // Up to 3 minutes
   const totalSamples = sampleRate * duration;

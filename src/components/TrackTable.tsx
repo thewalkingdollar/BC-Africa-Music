@@ -93,13 +93,25 @@ export const TrackTable: React.FC<TrackTableProps> = ({ tracks }) => {
                       />
                     </div>
                     <div className="min-w-0">
-                      <p
-                        className={`font-semibold truncate ${
-                          isCurrent ? 'text-sky-300' : 'text-white'
-                        }`}
-                      >
-                        {track.title}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p
+                          className={`font-semibold truncate ${
+                            isCurrent ? 'text-sky-300' : 'text-white'
+                          }`}
+                        >
+                          {track.title}
+                        </p>
+                        {track.status === 'pending_review' && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 shrink-0 font-bold">
+                            Pending
+                          </span>
+                        )}
+                        {track.status === 'rejected' && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 shrink-0 font-bold" title={track.reviewerNotes}>
+                            Needs Revision
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={(e) => {

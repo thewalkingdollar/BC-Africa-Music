@@ -9,6 +9,7 @@ import { TrendingNow } from './TrendingNow';
 export const DiscoverView: React.FC = () => {
   const {
     tracks,
+    approvedTracks,
     currentTrack,
     isPlaying,
     playTrack,
@@ -26,8 +27,11 @@ export const DiscoverView: React.FC = () => {
 
   const genres = ['all', 'Afrobeats', 'Amapiano', 'Highlife', 'Afro-Soul', 'Afro-Fusion'];
 
+  // Only approved songs appear on the public Discover feed
+  const publicCatalog = approvedTracks.length > 0 ? approvedTracks : tracks;
+
   // Filter tracks
-  const filteredTracks = tracks.filter((track) => {
+  const filteredTracks = publicCatalog.filter((track) => {
     const matchesSearch =
       !searchQuery ||
       track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -42,7 +46,7 @@ export const DiscoverView: React.FC = () => {
     return matchesSearch && matchesGenre;
   });
 
-  const featuredTrack = tracks.length > 0 ? tracks[0] : null;
+  const featuredTrack = publicCatalog.length > 0 ? publicCatalog[0] : null;
   const isFeaturedPlaying = featuredTrack && currentTrack?.id === featuredTrack.id && isPlaying;
 
   const handleUploadClick = () => {

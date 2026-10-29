@@ -14,10 +14,12 @@ import {
   Maximize2,
   Heart,
   Sliders,
+  DollarSign,
 } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
 import { formatTime } from '../utils/lrcParser';
 import { AudioVisualizer } from './AudioVisualizer';
+import { TipArtistModal } from './TipArtistModal';
 
 export const BottomPlayer: React.FC = () => {
   const {
@@ -50,6 +52,7 @@ export const BottomPlayer: React.FC = () => {
   const [isHoveringSeek, setIsHoveringSeek] = useState(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [isTipModalOpen, setIsTipModalOpen] = useState(false);
 
   if (!currentTrack) return null;
 
@@ -127,6 +130,14 @@ export const BottomPlayer: React.FC = () => {
                   currentTrack.isFavorite ? 'fill-rose-500 text-rose-500' : ''
                 }`}
               />
+            </button>
+
+            <button
+              onClick={() => setIsTipModalOpen(true)}
+              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+              title={`Send a tip to ${currentTrack.artist}`}
+            >
+              <DollarSign className="w-4 h-4 text-emerald-400" />
             </button>
           </div>
 
@@ -332,6 +343,18 @@ export const BottomPlayer: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Direct-to-Artist Tip Modal */}
+      {currentTrack && (
+        <TipArtistModal
+          isOpen={isTipModalOpen}
+          onClose={() => setIsTipModalOpen(false)}
+          artistId={currentTrack.ownerId || 'featured_artist'}
+          artistName={currentTrack.artist}
+          trackId={currentTrack.id}
+          trackTitle={currentTrack.title}
+        />
+      )}
     </div>
   );
 };

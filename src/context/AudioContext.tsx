@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { LyricLine, Track, ViewMode, TrendingTrack } from '../types/music';
+import { LyricLine, Track, ViewMode, TrendingTrack, TrackStatus } from '../types/music';
 import { INITIAL_TRACKS } from '../data/defaultTracks';
 import { generateAfricanTrackAudio } from '../utils/audioSynthesizer';
 import {
@@ -10,22 +10,13 @@ import {
   getAudioBlob,
   deleteAudioBlob,
 } from '../utils/indexedDB';
-import {
-  doc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  collection,
-  query,
-  where,
-  addDoc,
-  increment,
-} from 'firebase/firestore';
-import { db, auth, testConnection, handleFirestoreError, OperationType } from '../firebase/config';
+import { BOOTSTRAP_ADMIN_EMAIL, useAuth } from './AuthContext';
+import { usePlatform } from './PlatformContext';
+import { apiClient } from '../services/apiClient';
 
 interface AudioContextType {
   tracks: Track[];
+  approvedTracks: Track[];
   trendingTracks: TrendingTrack[];
   plays24hMap: Record<string, number>;
   currentTrack: Track | null;
@@ -71,6 +62,8 @@ interface AudioContextType {
   toggleFavorite: (trackId: string) => void;
   addCustomTrack: (trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>, audioBlob: Blob) => Promise<Track>;
   updateTrackLyrics: (trackId: string, synced: LyricLine[], rawLRC: string) => Promise<void>;
+  updateTrackStatus: (trackId: string, status: TrackStatus, notes?: string) => Promise<void>;
+  updateTrackMetadata: (trackId: string, meta: Partial<Track>) => Promise<void>;
   deleteTrack: (trackId: string) => Promise<void>;
 }
 
@@ -80,6 +73,9 @@ const AudioContext = createContext<AudioContextType | null>(null);
 const audioUrlCache = new Map<string, string>();
 
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { notifyTrackPlayed, isAdOverlayOpen } = usePlatform();
+  const { user } = useAuth();
+
   const [tracks, setTracks] = useState<Track[]>(INITIAL_TRACKS);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -110,18 +106,23 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const [analyserReady, setAnalyserReady] = useState<AnalyserNode | null>(null);
 
-  // Validate connection and load custom tracks from IndexedDB & Firestore
+  // Pause music if in-stream ad starts playing
+  useEffect(() => {
+    if (isAdOverlayOpen && isPlaying && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    }
+  }, [isAdOverlayOpen, isPlaying]);
+
+  // Load custom tracks from IndexedDB & Self-Hosted Ubuntu server
   useEffect(() => {
     let mounted = true;
 
-    // Test connection on startup per Firebase guidelines
-    testConnection().catch((err) => console.warn('Connection check note:', err));
-
-    async function loadTracks() {
+    async function loadInitialData() {
+      // 1. Load local IndexedDB custom uploaded blobs
       try {
         const storedTracks = await getCustomTracks();
         if (mounted && storedTracks && storedTracks.length > 0) {
-          // Re-create object URLs for saved blobs
           const restoredTracks: Track[] = await Promise.all(
             storedTracks.map(async (t) => {
               if (t.audioBlobKey) {
@@ -133,89 +134,76 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               return t;
             })
           );
-          setTracks(restoredTracks);
+          setTracks((prev) => {
+            const localMap = new Map(prev.map((t) => [t.id, t]));
+            restoredTracks.forEach((t) => localMap.set(t.id, t));
+            return Array.from(localMap.values());
+          });
         }
       } catch (e) {
-        console.error('Error loading stored tracks:', e);
+        console.error('Error loading stored local tracks:', e);
+      }
+
+      // 2. Fetch tracks and 24h play stats from self-hosted server
+      try {
+        const serverTracks = await apiClient.tracks.getAll();
+        if (mounted && serverTracks && serverTracks.length > 0) {
+          setTracks((prev) => {
+            const localMap = new Map(prev.map((t) => [t.id, t]));
+            serverTracks.forEach((st) => {
+              const existing = localMap.get(st.id);
+              if (existing && existing.audioUrl?.startsWith('blob:')) {
+                localMap.set(st.id, { ...st, audioUrl: existing.audioUrl, audioBlobKey: existing.audioBlobKey });
+              } else {
+                localMap.set(st.id, st);
+              }
+            });
+            return Array.from(localMap.values());
+          });
+        }
+
+        const recentPlays = await apiClient.plays.getRecent24h();
+        if (mounted && recentPlays) {
+          setPlays24hMap(recentPlays);
+        }
+      } catch (err) {
+        console.warn('Notice loading tracks from self-hosted server:', err);
       }
     }
-    loadTracks();
 
-    // Listen to Firestore tracks collection with standardized error handling
-    const unsubscribeFirestore = onSnapshot(
-      collection(db, 'tracks'),
-      (snapshot) => {
-        if (!mounted) return;
-        const firestoreTracks: Track[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            title: data.title || 'Untitled Track',
-            artist: data.artist || 'Unknown Artist',
-            album: data.album || 'Single',
-            genre: data.genre || 'Afrobeats',
-            duration: Number(data.duration) || 180,
-            audioUrl: data.audioUrl || '',
-            coverUrl: data.coverUrl || '',
-            lyricsRaw: data.lyricsRaw || '',
-            lyricsSynced: data.lyricsSynced || [],
-            isCustomUpload: true,
-            uploadedAt: data.createdAt ? String(data.createdAt).split('T')[0] : new Date().toISOString().split('T')[0],
-            plays: Number(data.plays) || 0,
-            ownerId: data.ownerId || '',
-            ownerEmail: data.ownerEmail || '',
-            ownerName: data.ownerName || '',
-          };
-        });
+    loadInitialData();
 
-        // Merge firestore tracks with local tracks, preserving local blob audio URLs
-        setTracks((prev) => {
-          const localMap = new Map(prev.map((t) => [t.id, t]));
-          firestoreTracks.forEach((ft) => {
-            const existingLocal = localMap.get(ft.id);
-            if (existingLocal && existingLocal.audioUrl && existingLocal.audioUrl.startsWith('blob:')) {
-              localMap.set(ft.id, { ...ft, audioUrl: existingLocal.audioUrl, audioBlobKey: existingLocal.audioBlobKey });
-            } else {
-              localMap.set(ft.id, ft);
-            }
+    // Periodic synchronization with self-hosted server
+    const syncInterval = setInterval(async () => {
+      try {
+        const serverTracks = await apiClient.tracks.getAll();
+        if (mounted && serverTracks && serverTracks.length > 0) {
+          setTracks((prev) => {
+            const localMap = new Map(prev.map((t) => [t.id, t]));
+            serverTracks.forEach((st) => {
+              const existing = localMap.get(st.id);
+              if (existing && existing.audioUrl?.startsWith('blob:')) {
+                localMap.set(st.id, { ...st, audioUrl: existing.audioUrl, audioBlobKey: existing.audioBlobKey });
+              } else {
+                localMap.set(st.id, st);
+              }
+            });
+            return Array.from(localMap.values());
           });
-          return Array.from(localMap.values());
-        });
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'tracks');
-      }
-    );
+        }
 
-    // Listen to stream plays within the last 24 hours for Trending Now calculations
-    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const playsQuery = query(
-      collection(db, 'plays'),
-      where('timestamp', '>=', twentyFourHoursAgo)
-    );
-
-    const unsubscribePlays = onSnapshot(
-      playsQuery,
-      (snapshot) => {
-        if (!mounted) return;
-        const counts: Record<string, number> = {};
-        snapshot.docs.forEach((d) => {
-          const data = d.data();
-          if (data.trackId) {
-            counts[data.trackId] = (counts[data.trackId] || 0) + 1;
-          }
-        });
-        setPlays24hMap(counts);
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'plays');
+        const recentPlays = await apiClient.plays.getRecent24h();
+        if (mounted && recentPlays) {
+          setPlays24hMap(recentPlays);
+        }
+      } catch {
+        // quiet fallback
       }
-    );
+    }, 6000);
 
     return () => {
       mounted = false;
-      unsubscribeFirestore();
-      unsubscribePlays();
+      clearInterval(syncInterval);
     };
   }, []);
 
@@ -264,7 +252,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [isLooping]);
 
-  // Lazy Web Audio API init for Visualizer (Must happen after user interaction)
+  // Lazy Web Audio API init for Visualizer
   const setupWebAudio = useCallback(() => {
     if (!audioRef.current) return;
     if (webAudioCtxRef.current) {
@@ -275,7 +263,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     try {
-      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtxClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioCtxClass();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 128;
@@ -290,78 +280,62 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       sourceNodeRef.current = source;
       setAnalyserReady(analyser);
     } catch (e) {
-      console.warn('Web Audio API setup notice:', e);
+      console.warn('Web Audio initialization note:', e);
     }
   }, []);
 
-  // Resolves audio URL for track (either user blob or procedural African synthesizer)
+  // Resolve audio URL
   const resolveAudioUrl = useCallback(async (track: Track): Promise<string> => {
-    if (track.audioUrl && track.audioUrl.length > 0) {
+    if (track.audioUrl && track.audioUrl.trim().length > 0) {
       return track.audioUrl;
     }
 
-    // Check cache
+    if (track.audioBlobKey) {
+      const blob = await getAudioBlob(track.audioBlobKey);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        audioUrlCache.set(track.id, url);
+        return url;
+      }
+    }
+
     if (audioUrlCache.has(track.id)) {
       return audioUrlCache.get(track.id)!;
     }
 
-    // Generate procedural African music matching style
-    let style: 'amapiano' | 'afrobeats' | 'highlife' | 'afrosoul' = 'afrobeats';
-    let bpm = 112;
-    let rootFreq = 130.81; // C3
-
-    if (track.genre.toLowerCase().includes('amapiano')) {
-      style = 'amapiano';
-      bpm = 114;
-      rootFreq = 110; // A2
-    } else if (track.genre.toLowerCase().includes('highlife')) {
-      style = 'highlife';
-      bpm = 108;
-      rootFreq = 146.83; // D3
-    } else if (track.genre.toLowerCase().includes('soul')) {
-      style = 'afrosoul';
-      bpm = 88;
-      rootFreq = 123.47; // B2
-    }
-
-    const generatedUrl = await generateAfricanTrackAudio({
-      bpm,
-      rootFreq,
-      scale: [0, 2, 4, 7, 9],
-      style,
-      duration: track.duration || 135,
-    });
-
-    audioUrlCache.set(track.id, generatedUrl);
-    return generatedUrl;
+    const synthUrl = await generateAfricanTrackAudio(track);
+    audioUrlCache.set(track.id, synthUrl);
+    return synthUrl;
   }, []);
 
-  const recordTrackPlay = useCallback(async (track: Track) => {
-    try {
-      const now = Date.now();
-      const currentUserId = auth.currentUser ? auth.currentUser.uid : null;
-      // 1. Add play event to 'plays' collection for 24-hour trending calculations
-      await addDoc(collection(db, 'plays'), {
-        trackId: track.id,
-        timestamp: now,
-        playedAt: new Date(now).toISOString(),
-        userId: currentUserId,
-        trackTitle: track.title,
-        artist: track.artist,
-      });
+  // Record stream play event to self-hosted server
+  const recordTrackPlay = useCallback(
+    async (track: Track) => {
+      try {
+        await apiClient.plays.record({
+          trackId: track.id,
+          trackTitle: track.title,
+          artist: track.artist,
+          userId: user?.uid,
+          artistId: track.ownerId,
+        });
 
-      // 2. Increment track's total plays in Firestore if doc exists
-      const trackRef = doc(db, 'tracks', track.id);
-      await updateDoc(trackRef, {
-        plays: increment(1),
-      }).catch((e) => {
-        // Silently skip if track does not exist in Firestore (e.g. local-only blob)
-        console.debug('Increment track plays note:', e);
-      });
-    } catch (err) {
-      console.warn('Failed to record track play:', err);
-    }
-  }, []);
+        // Update local 24h play stats
+        setPlays24hMap((prev) => ({
+          ...prev,
+          [track.id]: (prev[track.id] || 0) + 1,
+        }));
+      } catch (err) {
+        console.warn('Failed to record track play:', err);
+      }
+    },
+    [user]
+  );
+
+  // Filter approved tracks for listeners
+  const approvedTracks = useMemo(() => {
+    return tracks.filter((t) => !t.status || t.status === 'approved');
+  }, [tracks]);
 
   const playTrack = useCallback(
     async (track: Track) => {
@@ -384,8 +358,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsPlaying(true);
         setDuration(track.duration || 0);
 
-        // Record play event in Firestore & update all-time play count
+        // Record play event & notify platform in-stream advert engine
         recordTrackPlay(track);
+        notifyTrackPlayed();
 
         // Increment local play count
         setTracks((prev) =>
@@ -395,7 +370,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.error('Audio play error:', err);
       }
     },
-    [setupWebAudio, resolveAudioUrl, playbackRate, isMuted, volume, recordTrackPlay]
+    [setupWebAudio, resolveAudioUrl, playbackRate, isMuted, volume, recordTrackPlay, notifyTrackPlayed]
   );
 
   const togglePlay = useCallback(async () => {
@@ -408,7 +383,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsPlaying(false);
     } else {
       if (!currentTrack && tracks.length > 0) {
-        await playTrack(tracks[0]);
+        await playTrack(approvedTracks[0] || tracks[0]);
       } else if (currentTrack) {
         if (!audio.src || audio.src === window.location.href) {
           await playTrack(currentTrack);
@@ -422,7 +397,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
     }
-  }, [isPlaying, currentTrack, tracks, playTrack, setupWebAudio]);
+  }, [isPlaying, currentTrack, tracks, approvedTracks, playTrack, setupWebAudio]);
 
   const pause = useCallback(() => {
     if (audioRef.current) {
@@ -439,28 +414,29 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const skipNext = useCallback(() => {
-    if (tracks.length === 0) return;
+    const list = approvedTracks.length > 0 ? approvedTracks : tracks;
+    if (list.length === 0) return;
     if (isShuffle) {
-      const randomIndex = Math.floor(Math.random() * tracks.length);
-      playTrack(tracks[randomIndex]);
+      const randomIndex = Math.floor(Math.random() * list.length);
+      playTrack(list[randomIndex]);
       return;
     }
-    const currentIndex = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : -1;
-    const nextIndex = (currentIndex + 1) % tracks.length;
-    playTrack(tracks[nextIndex]);
-  }, [tracks, isShuffle, currentTrack, playTrack]);
+    const currentIndex = currentTrack ? list.findIndex((t) => t.id === currentTrack.id) : -1;
+    const nextIndex = (currentIndex + 1) % list.length;
+    playTrack(list[nextIndex]);
+  }, [approvedTracks, tracks, isShuffle, currentTrack, playTrack]);
 
   const skipPrev = useCallback(() => {
-    if (tracks.length === 0) return;
-    // If more than 3 seconds in, restart track
+    const list = approvedTracks.length > 0 ? approvedTracks : tracks;
+    if (list.length === 0) return;
     if (audioRef.current && audioRef.current.currentTime > 3) {
       seek(0);
       return;
     }
-    const currentIndex = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : 0;
-    const prevIndex = (currentIndex - 1 + tracks.length) % tracks.length;
-    playTrack(tracks[prevIndex]);
-  }, [tracks, currentTrack, playTrack, seek]);
+    const currentIndex = currentTrack ? list.findIndex((t) => t.id === currentTrack.id) : 0;
+    const prevIndex = (currentIndex - 1 + list.length) % list.length;
+    playTrack(list[prevIndex]);
+  }, [approvedTracks, tracks, currentTrack, playTrack, seek]);
 
   const setVolume = useCallback((vol: number) => {
     const clamped = Math.max(0, Math.min(1, vol));
@@ -507,10 +483,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   }, []);
 
+  // Add custom track with local IndexedDB storage and self-hosted server persistence
   const addCustomTrack = useCallback(
     async (trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>, audioBlob: Blob): Promise<Track> => {
       const id = `bc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const objectUrl = URL.createObjectURL(audioBlob);
+
+      const isAutoApproved = user?.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
+      const initialStatus: TrackStatus = isAutoApproved ? 'approved' : 'pending_review';
 
       const newTrack: Track = {
         ...trackData,
@@ -518,44 +498,32 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         audioUrl: objectUrl,
         audioBlobKey: id,
         isCustomUpload: true,
+        status: initialStatus,
+        reviewerNotes: '',
         plays: 0,
         uploadedAt: new Date().toISOString().split('T')[0],
+        ownerId: user?.uid || 'guest_creator',
+        ownerEmail: user?.email || '',
+        ownerName: user?.displayName || trackData.artist,
       };
 
-      // Persist locally in IndexedDB for instant playback
       await saveAudioBlob(id, audioBlob);
       await saveTrackMetadata(newTrack);
 
-      // Persist in Firestore if authenticated
-      if (auth.currentUser) {
-        try {
-          const trackDocRef = doc(db, 'tracks', id);
-          await setDoc(trackDocRef, {
-            id,
-            title: newTrack.title,
-            artist: newTrack.artist,
-            album: newTrack.album || 'Single',
-            genre: newTrack.genre || 'Afrobeats',
-            duration: newTrack.duration,
-            audioUrl: newTrack.audioUrl || '',
-            coverUrl: newTrack.coverUrl || '',
-            lyricsRaw: newTrack.lyricsRaw || '',
-            lyricsSynced: newTrack.lyricsSynced || [],
-            ownerId: auth.currentUser.uid,
-            ownerEmail: auth.currentUser.email || '',
-            ownerName: newTrack.ownerName || auth.currentUser.displayName || newTrack.artist,
-            plays: 0,
-            createdAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.CREATE, `tracks/${id}`);
-        }
+      // Persist to self-hosted Ubuntu server
+      try {
+        await apiClient.tracks.create({
+          ...newTrack,
+          audioUrl: trackData.audioUrl || objectUrl,
+        });
+      } catch (err) {
+        console.warn('Notice saving track to self-hosted server:', err);
       }
 
       setTracks((prev) => [newTrack, ...prev.filter((t) => t.id !== id)]);
       return newTrack;
     },
-    []
+    [user]
   );
 
   const updateTrackLyrics = useCallback(
@@ -578,27 +546,76 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
       }
 
-      // If custom track, update in IndexedDB
       const target = tracks.find((t) => t.id === trackId);
       if (target && target.isCustomUpload) {
         await saveTrackMetadata({ ...target, lyricsSynced: synced, lyricsRaw: rawLRC });
       }
 
-      // Sync updated lyrics with Firestore
-      if (auth.currentUser) {
-        try {
-          const trackDocRef = doc(db, 'tracks', trackId);
-          await updateDoc(trackDocRef, {
-            lyricsSynced: synced,
-            lyricsRaw: rawLRC,
-            updatedAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          console.warn('Firestore track lyric sync note:', err);
-        }
+      // Sync to self-hosted Ubuntu backend
+      try {
+        await apiClient.tracks.update(trackId, {
+          lyricsSynced: synced,
+          lyricsRaw: rawLRC,
+        });
+      } catch (err) {
+        console.warn('Notice updating lyrics on server:', err);
       }
     },
     [currentTrack, activeStudioTrack, tracks]
+  );
+
+  // Review status update for Music Review Team
+  const updateTrackStatus = useCallback(
+    async (trackId: string, status: TrackStatus, notes?: string) => {
+      const now = new Date().toISOString();
+      const reviewerEmail = user?.email || 'Reviewer';
+
+      setTracks((prev) =>
+        prev.map((t) =>
+          t.id === trackId
+            ? { ...t, status, reviewerNotes: notes || '', reviewedAt: now, reviewedBy: reviewerEmail }
+            : t
+        )
+      );
+
+      if (currentTrack && currentTrack.id === trackId) {
+        setCurrentTrack((prev) =>
+          prev ? { ...prev, status, reviewerNotes: notes || '', reviewedAt: now, reviewedBy: reviewerEmail } : null
+        );
+      }
+
+      try {
+        await apiClient.tracks.update(trackId, {
+          status,
+          reviewerNotes: notes || '',
+          reviewedBy: reviewerEmail,
+          reviewedAt: now,
+        });
+      } catch (err) {
+        console.warn('Update track review status note:', err);
+      }
+    },
+    [currentTrack, user]
+  );
+
+  // Metadata update for Editorial Team
+  const updateTrackMetadata = useCallback(
+    async (trackId: string, meta: Partial<Track>) => {
+      setTracks((prev) =>
+        prev.map((t) => (t.id === trackId ? { ...t, ...meta } : t))
+      );
+
+      if (currentTrack && currentTrack.id === trackId) {
+        setCurrentTrack((prev) => (prev ? { ...prev, ...meta } : null));
+      }
+
+      try {
+        await apiClient.tracks.update(trackId, meta);
+      } catch (err) {
+        console.warn('Update track metadata note:', err);
+      }
+    },
+    [currentTrack]
   );
 
   const deleteTrack = useCallback(
@@ -609,12 +626,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await deleteTrackMetadata(trackId);
       }
 
-      if (auth.currentUser) {
-        try {
-          await deleteDoc(doc(db, 'tracks', trackId));
-        } catch (err) {
-          console.warn('Firestore track deletion note:', err);
-        }
+      try {
+        await apiClient.tracks.delete(trackId);
+      } catch (err) {
+        console.warn('Self-hosted track deletion note:', err);
       }
 
       setTracks((prev) => prev.filter((t) => t.id !== trackId));
@@ -654,9 +669,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveView('artist-profile');
   }, []);
 
-  // Calculate trending tracks sorted by 24h play events, then total plays
+  // Calculate trending tracks sorted by 24h play events among approved tracks
   const trendingTracks: TrendingTrack[] = useMemo(() => {
-    return tracks
+    const candidateTracks = approvedTracks.length > 0 ? approvedTracks : tracks;
+    return candidateTracks
       .map((track) => {
         const plays24h = plays24hMap[track.id] || 0;
         return {
@@ -666,23 +682,22 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
       })
       .sort((a, b) => {
-        // Sort primarily by plays in last 24h
         if (b.plays24h !== a.plays24h) {
           return b.plays24h - a.plays24h;
         }
-        // Secondary tiebreaker: all-time plays
         return (b.track.plays || 0) - (a.track.plays || 0);
       })
       .map((item, index) => ({
         ...item,
         rank: index + 1,
       }));
-  }, [tracks, plays24hMap]);
+  }, [approvedTracks, tracks, plays24hMap]);
 
   return (
     <AudioContext.Provider
       value={{
         tracks,
+        approvedTracks,
         trendingTracks,
         plays24hMap,
         currentTrack,
@@ -728,6 +743,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleFavorite,
         addCustomTrack,
         updateTrackLyrics,
+        updateTrackStatus,
+        updateTrackMetadata,
         deleteTrack,
       }}
     >

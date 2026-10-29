@@ -78,21 +78,29 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index }) => {
         </div>
 
         {/* Top Badges */}
-        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
-          {hasSyncedLyrics ? (
-            <span className="text-[9px] font-mono font-semibold bg-[#070e17]/90 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/40 backdrop-blur-sm">
-              SYNCED
-            </span>
-          ) : (
-            <span />
-          )}
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
+            {track.status === 'pending_review' ? (
+              <span className="text-[8px] font-mono font-bold bg-amber-950/90 text-amber-300 px-1.5 py-0.5 rounded-full border border-amber-500/50 backdrop-blur-sm">
+                PENDING REVIEW
+              </span>
+            ) : track.status === 'rejected' ? (
+              <span className="text-[8px] font-mono font-bold bg-rose-950/90 text-rose-300 px-1.5 py-0.5 rounded-full border border-rose-500/50 backdrop-blur-sm">
+                REVISION
+              </span>
+            ) : hasSyncedLyrics ? (
+              <span className="text-[9px] font-mono font-semibold bg-[#070e17]/90 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/40 backdrop-blur-sm">
+                SYNCED
+              </span>
+            ) : null}
+          </div>
 
           <button
             onClick={(e) => {
               e.stopPropagation();
               toggleFavorite(track.id);
             }}
-            className="p-1 rounded-full bg-black/50 backdrop-blur-sm text-slate-300 hover:text-rose-400 pointer-events-auto transition-colors cursor-pointer"
+            className="p-1 rounded-full bg-black/50 backdrop-blur-sm text-slate-300 hover:text-rose-400 pointer-events-auto transition-colors cursor-pointer shrink-0"
           >
             <Heart
               className={`w-3.5 h-3.5 ${

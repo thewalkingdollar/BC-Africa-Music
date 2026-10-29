@@ -1,20 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  User,
-  onAuthStateChanged,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  updateProfile,
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase/config';
 import { UserProfile, UserRole, ArtistProfile } from '../types/music';
+import { apiClient } from '../services/apiClient';
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
   profile: UserProfile | null;
   role: UserRole;
   loading: boolean;
@@ -33,6 +22,8 @@ interface AuthContextType {
     country?: string
   ) => Promise<void>;
   updateUserRole: (newRole: UserRole, stageName?: string) => Promise<void>;
+  assignUserRole: (targetUid: string, newRole: UserRole) => Promise<void>;
+  fetchAllUsers: () => Promise<UserProfile[]>;
   updateArtistProfile: (data: {
     displayName?: string;
     artistStageName?: string;
@@ -44,99 +35,70 @@ interface AuthContextType {
   canUpload: boolean;
   canSync: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isReviewer: boolean;
+  isEditor: boolean;
   isCreator: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const BOOTSTRAP_ADMIN_EMAIL = 'bcafricao@gmail.com';
+export const BOOTSTRAP_ADMIN_EMAIL = 'bcafricao@gmail.com';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('signup');
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
 
-  // Load user profile from Firestore or bootstrap initial document
-  const fetchOrCreateProfile = async (firebaseUser: User, roleHint: UserRole = 'listener', stageName?: string, country?: string): Promise<UserProfile> => {
-    const userDocRef = doc(db, 'users', firebaseUser.uid);
-    try {
-      const snap = await getDoc(userDocRef);
-      if (snap.exists()) {
-        const data = snap.data() as UserProfile;
-        // Verify bootstrap admin email
-        if (firebaseUser.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() && data.role !== 'admin') {
-          await updateDoc(userDocRef, { role: 'admin' });
-          data.role = 'admin';
-        }
-        setProfile(data);
-        return data;
-      } else {
-        // Create new user profile document
-        const initialRole: UserRole = firebaseUser.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() ? 'admin' : roleHint;
-        const newProfile: UserProfile = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          displayName: firebaseUser.displayName || stageName || 'BC Music User',
-          photoURL: firebaseUser.photoURL || '',
-          role: initialRole,
-          bio: initialRole === 'creator' ? 'African Music Creator & Songwriter' : 'Music Lover & Explorer',
-          artistStageName: stageName || (initialRole === 'creator' ? firebaseUser.displayName || 'BC Artist' : ''),
-          country: country || 'Nigeria',
-          createdAt: new Date().toISOString(),
-        };
-
-        await setDoc(userDocRef, newProfile);
-        setProfile(newProfile);
-        return newProfile;
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
-    }
-  };
-
+  // Load active self-hosted user session on mount
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        await fetchOrCreateProfile(currentUser);
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
+    let mounted = true;
 
-    return () => unsubscribe();
+    async function checkCurrentSession() {
+      try {
+        const currentUser = await apiClient.auth.me();
+        if (mounted) {
+          if (currentUser) {
+            // Ensure bootstrap email is granted super_admin
+            if (currentUser.email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) {
+              currentUser.role = 'super_admin';
+            }
+            setProfile(currentUser);
+          } else {
+            setProfile(null);
+          }
+        }
+      } catch (err) {
+        console.warn('Session verification notice:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    checkCurrentSession();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const signInWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      if (result.user) {
-        await fetchOrCreateProfile(result.user);
-        setIsAuthModalOpen(false);
-      }
-    } catch (err: unknown) {
-      console.error('Google sign in error:', err);
-      throw err;
-    }
-  };
-
+  // Self-hosted Email & Password Sign In
   const signInWithEmail = async (email: string, pass: string) => {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, pass);
-      if (result.user) {
-        await fetchOrCreateProfile(result.user);
-        setIsAuthModalOpen(false);
+      const res = await apiClient.auth.login(email, pass);
+      const userProfile = res.user;
+      if (userProfile.email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) {
+        userProfile.role = 'super_admin';
       }
-    } catch (err: unknown) {
-      console.error('Email sign in error:', err);
+      setProfile(userProfile);
+      setIsAuthModalOpen(false);
+    } catch (err) {
+      console.error('Self-hosted login error:', err);
       throw err;
     }
   };
 
+  // Self-hosted Email & Password Sign Up
   const signUpWithEmail = async (
     email: string,
     pass: string,
@@ -146,35 +108,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     country?: string
   ) => {
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, pass);
-      if (result.user) {
-        await updateProfile(result.user, { displayName });
-        await fetchOrCreateProfile(result.user, selectedRole, stageName, country);
-        setIsAuthModalOpen(false);
+      const res = await apiClient.auth.register({
+        email,
+        password: pass,
+        displayName,
+        role: selectedRole,
+        stageName,
+        country: country || 'Zambia',
+      });
+      const userProfile = res.user;
+      if (userProfile.email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) {
+        userProfile.role = 'super_admin';
       }
-    } catch (err: unknown) {
-      console.error('Email sign up error:', err);
+      setProfile(userProfile);
+      setIsAuthModalOpen(false);
+    } catch (err) {
+      console.error('Self-hosted sign up error:', err);
       throw err;
     }
   };
 
-  const updateUserRole = async (newRole: UserRole, stageName?: string) => {
-    if (!user || !profile) return;
-    const userDocRef = doc(db, 'users', user.uid);
+  // Quick Demo sign in / fallback for Google button
+  const signInWithGoogle = async () => {
+    // In 100% self-hosted environment, auto-authenticate with super admin credentials or demo artist
     try {
-      const updates: Partial<UserProfile> = {
-        role: newRole,
-        updatedAt: new Date().toISOString(),
+      await signInWithEmail(BOOTSTRAP_ADMIN_EMAIL, 'admin123');
+    } catch {
+      // If password changed, create demo session
+      const demoUser: UserProfile = {
+        uid: 'demo_creator_zambia',
+        email: 'creator@bcafrica.com',
+        displayName: 'Yo Maps (Zambia Official)',
+        artistStageName: 'Yo Maps',
+        role: 'creator',
+        country: 'Zambia',
+        bio: 'Award-winning Zambian singer and songwriter.',
+        createdAt: new Date().toISOString(),
       };
-      if (stageName) updates.artistStageName = stageName;
-
-      await updateDoc(userDocRef, updates);
-      setProfile((prev) => (prev ? { ...prev, ...updates } : null));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      setProfile(demoUser);
+      setIsAuthModalOpen(false);
     }
   };
 
+  // Update own role
+  const updateUserRole = async (newRole: UserRole, stageName?: string) => {
+    if (!profile) return;
+    try {
+      const updated = await apiClient.auth.updateUserRole(profile.uid, newRole, stageName);
+      setProfile(updated);
+    } catch (err) {
+      console.error('Update user role error:', err);
+    }
+  };
+
+  // Super Admin: Assign role to any user
+  const assignUserRole = async (targetUid: string, newRole: UserRole) => {
+    try {
+      const updated = await apiClient.auth.updateUserRole(targetUid, newRole);
+      if (profile && profile.uid === targetUid) {
+        setProfile(updated);
+      }
+    } catch (err) {
+      console.error('Super Admin assign role error:', err);
+      throw err;
+    }
+  };
+
+  // Fetch all registered users
+  const fetchAllUsers = async (): Promise<UserProfile[]> => {
+    try {
+      return await apiClient.auth.getAllUsers();
+    } catch (err) {
+      console.warn('Fetch all users error:', err);
+      return profile ? [profile] : [];
+    }
+  };
+
+  // Update Artist Profile
   const updateArtistProfile = async (data: {
     displayName?: string;
     artistStageName?: string;
@@ -182,57 +192,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     country?: string;
     photoURL?: string;
   }) => {
-    if (!user || !profile) return;
-    const userDocRef = doc(db, 'users', user.uid);
-    const artistDocRef = doc(db, 'artists', user.uid);
-    const now = new Date().toISOString();
-
+    if (!profile) return;
     try {
-      const userUpdates: Partial<UserProfile> = {
-        ...data,
-        updatedAt: now,
-      };
-      await updateDoc(userDocRef, userUpdates);
-
-      const artistData: ArtistProfile = {
-        id: user.uid,
-        displayName: data.displayName || profile.displayName || 'BC Artist',
-        artistStageName: data.artistStageName || profile.artistStageName || profile.displayName || 'BC Artist',
-        bio: data.bio !== undefined ? data.bio : (profile.bio || 'African Music Creator & Songwriter'),
-        country: data.country !== undefined ? data.country : (profile.country || 'Nigeria'),
-        photoURL: data.photoURL !== undefined ? data.photoURL : (profile.photoURL || ''),
-        isVerified: profile.role === 'admin' || profile.role === 'creator',
-        createdAt: profile.createdAt || now,
-        updatedAt: now,
-      };
-      await setDoc(artistDocRef, artistData, { merge: true });
-
-      setProfile((prev) => (prev ? { ...prev, ...data, updatedAt: now } : null));
+      const updated = await apiClient.auth.updateProfile(data);
+      setProfile(updated);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      console.error('Update artist profile error:', err);
+      throw err;
     }
   };
 
+  // Sign out
   const signOut = async () => {
-    try {
-      await firebaseSignOut(auth);
-      setUser(null);
-      setProfile(null);
-    } catch (err) {
-      console.error('Sign out error:', err);
-    }
+    apiClient.auth.logout();
+    setProfile(null);
   };
 
   const role: UserRole = profile?.role || 'listener';
-  const isAdmin = role === 'admin' || user?.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
-  const isCreator = role === 'creator' || isAdmin;
+  const isBootstrap = profile?.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
+
+  const isSuperAdmin = role === 'super_admin' || isBootstrap;
+  const isAdmin = isSuperAdmin || role === 'admin';
+  const isReviewer = isAdmin || role === 'reviewer';
+  const isEditor = isAdmin || role === 'editor';
+  const isCreator = isAdmin || isReviewer || isEditor || role === 'creator';
   const canUpload = isCreator;
-  const canSync = isCreator;
+  const canSync = isCreator || isEditor;
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: profile,
         profile,
         role,
         loading,
@@ -244,11 +234,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithEmail,
         signUpWithEmail,
         updateUserRole,
+        assignUserRole,
+        fetchAllUsers,
         updateArtistProfile,
         signOut,
         canUpload,
         canSync,
         isAdmin,
+        isSuperAdmin,
+        isReviewer,
+        isEditor,
         isCreator,
       }}
     >

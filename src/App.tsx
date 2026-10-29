@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { AuthProvider } from './context/AuthContext';
+import { PlatformProvider } from './context/PlatformContext';
 import { AudioProvider, useAudio } from './context/AudioContext';
 import { Navbar } from './components/Navbar';
 import { BottomPlayer } from './components/BottomPlayer';
@@ -14,6 +15,10 @@ import { MyUploadsView } from './components/MyUploadsView';
 import { FavoritesView } from './components/FavoritesView';
 import { LyricsSyncStudio } from './components/LyricsSyncStudio';
 import { ArtistProfileView } from './components/ArtistProfileView';
+import { ReviewQueueView } from './components/ReviewQueueView';
+import { SuperUserPanel } from './components/SuperUserPanel';
+import { ArtistAnalyticsPanel } from './components/ArtistAnalyticsPanel';
+import { AdPlayerOverlay } from './components/AdPlayerOverlay';
 import { LyricsViewer } from './components/LyricsViewer';
 import { NowPlayingModal } from './components/NowPlayingModal';
 import { UploadModal } from './components/UploadModal';
@@ -30,6 +35,9 @@ const MainContent: React.FC = () => {
       {activeView === 'favorites' && <FavoritesView />}
       {activeView === 'lyrics-studio' && <LyricsSyncStudio />}
       {activeView === 'artist-profile' && <ArtistProfileView />}
+      {activeView === 'artist-analytics' && <ArtistAnalyticsPanel />}
+      {activeView === 'review-queue' && <ReviewQueueView />}
+      {activeView === 'super-panel' && <SuperUserPanel />}
     </main>
   );
 };
@@ -37,32 +45,40 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <AuthProvider>
-      <AudioProvider>
-        <div className="min-h-screen bg-[#060c15] text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
-          {/* Top Navbar */}
-          <Navbar />
+      <PlatformProvider>
+        <AudioProvider>
+          <div
+            className="min-h-screen text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white transition-colors duration-500"
+            style={{ backgroundColor: 'var(--bc-bg-dark, #040b15)' }}
+          >
+            {/* Top Navbar */}
+            <Navbar />
 
-          {/* Dynamic Main View */}
-          <div className="flex-1">
-            <MainContent />
+            {/* Dynamic Main View */}
+            <div className="flex-1">
+              <MainContent />
+            </div>
+
+            {/* In-Stream Audio / Banner Advert Overlay */}
+            <AdPlayerOverlay />
+
+            {/* Synced Lyrics Drawer */}
+            <LyricsViewer />
+
+            {/* Immersive Now Playing Screen */}
+            <NowPlayingModal />
+
+            {/* Upload Audio Modal */}
+            <UploadModal />
+
+            {/* Account Creation & Sign In Modal with Roles */}
+            <AuthModal />
+
+            {/* Sticky Audio Transport Bar */}
+            <BottomPlayer />
           </div>
-
-          {/* Synced Lyrics Drawer */}
-          <LyricsViewer />
-
-          {/* Immersive Now Playing Screen */}
-          <NowPlayingModal />
-
-          {/* Upload Audio Modal */}
-          <UploadModal />
-
-          {/* Account Creation & Sign In Modal with Roles */}
-          <AuthModal />
-
-          {/* Sticky Audio Transport Bar */}
-          <BottomPlayer />
-        </div>
-      </AudioProvider>
+        </AudioProvider>
+      </PlatformProvider>
     </AuthProvider>
   );
 }

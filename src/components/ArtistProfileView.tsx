@@ -20,13 +20,16 @@ import {
   Shield,
   X,
   Save,
+  TrendingUp,
+  DollarSign,
 } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
 import { useAuth } from '../context/AuthContext';
 import { ArtistProfile, Track } from '../types/music';
 import { formatTime } from '../utils/lrcParser';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { apiClient } from '../services/apiClient';
+import { TipArtistModal } from './TipArtistModal';
+import { AFRICAN_COUNTRIES } from './AuthModal';
 
 export const ArtistProfileView: React.FC = () => {
   const {
@@ -53,6 +56,7 @@ export const ArtistProfileView: React.FC = () => {
   const [editPhotoURL, setEditPhotoURL] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
+  const [isTipModalOpen, setIsTipModalOpen] = useState(false);
 
   // Loaded public artist profile from Firestore
   const [fetchedProfile, setFetchedProfile] = useState<ArtistProfile | null>(null);
@@ -75,30 +79,42 @@ export const ArtistProfileView: React.FC = () => {
     return 'Featured BC Artist';
   }, [selectedArtistName, profile, tracks]);
 
-  // Fetch or listen to public artist profile from Firestore /artists/{targetArtistId}
+  // Fetch artist profile from self-hosted users list
   useEffect(() => {
+    let mounted = true;
     if (!targetArtistId) {
       setFetchedProfile(null);
       return;
     }
 
-    const docRef = doc(db, 'artists', targetArtistId);
-    const unsubscribe = onSnapshot(
-      docRef,
-      (snap) => {
-        if (snap.exists()) {
-          setFetchedProfile(snap.data() as ArtistProfile);
+    async function loadArtist() {
+      try {
+        const users = await apiClient.auth.getAllUsers();
+        if (!mounted) return;
+        const matched = users.find((u) => u.uid === targetArtistId);
+        if (matched) {
+          setFetchedProfile({
+            id: matched.uid,
+            displayName: matched.displayName,
+            artistStageName: matched.artistStageName || matched.displayName,
+            bio: matched.bio || 'African Music Creator & Songwriter',
+            country: matched.country || 'Zambia',
+            photoURL: matched.photoURL || '',
+            isVerified: ['super_admin', 'admin', 'creator', 'reviewer', 'editor'].includes(matched.role),
+            createdAt: matched.createdAt,
+          });
         } else {
-          // Fallback if public profile document does not exist yet
           setFetchedProfile(null);
         }
-      },
-      (err) => {
+      } catch (err) {
         console.debug('Public artist profile read notice:', err);
       }
-    );
+    }
 
-    return () => unsubscribe();
+    loadArtist();
+    return () => {
+      mounted = false;
+    };
   }, [targetArtistId]);
 
   // Tracks uploaded by this artist
@@ -350,6 +366,24 @@ export const ArtistProfileView: React.FC = () => {
                   <span>Upload New Track</span>
                 </button>
               )}
+
+              {/* Tip / Support Artist Button */}
+              <button
+                onClick={() => setIsTipModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-rose-200 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 rounded-xl shadow-[0_0_15px_rgba(244,63,94,0.2)] transition-all cursor-pointer"
+              >
+                <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
+                <span>Tip / Support {displayName}</span>
+              </button>
+
+              {/* View Full Analytics & Royalties */}
+              <button
+                onClick={() => setActiveView('artist-analytics')}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-emerald-200 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all cursor-pointer"
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Analytics &amp; Royalties</span>
+              </button>
             </div>
           </div>
         </div>
@@ -629,13 +663,17 @@ export const ArtistProfileView: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Country of Origin
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={editCountry}
                     onChange={(e) => setEditCountry(e.target.value)}
-                    placeholder="e.g. Nigeria, Ghana, South Africa"
-                    className="w-full bg-[#0c1a2e] border border-sky-900/60 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
-                  />
+                    className="w-full bg-[#0c1a2e] border border-sky-900/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-400"
+                  >
+                    {AFRICAN_COUNTRIES.map((c) => (
+                      <option key={c} value={c} className="bg-slate-900 text-white">
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -673,6 +711,14 @@ export const ArtistProfileView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Direct-to-Artist Tip Modal */}
+      <TipArtistModal
+        isOpen={isTipModalOpen}
+        onClose={() => setIsTipModalOpen(false)}
+        artistId={targetArtistId || user?.uid || 'featured_artist'}
+        artistName={displayName}
+      />
     </div>
   );
 };

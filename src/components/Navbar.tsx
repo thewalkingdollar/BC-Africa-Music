@@ -1,8 +1,26 @@
 import React, { useState } from 'react';
-import { Upload, Search, Music, Mic2, Compass, Heart, User, LogOut, Shield, ChevronDown, Sparkles } from 'lucide-react';
+import {
+  Upload,
+  Search,
+  Music,
+  Mic2,
+  Compass,
+  Heart,
+  User,
+  LogOut,
+  Shield,
+  ChevronDown,
+  Sparkles,
+  Crown,
+  ShieldCheck,
+  Edit3,
+  TrendingUp,
+  DollarSign,
+} from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
 import { useAuth } from '../context/AuthContext';
-import { ViewMode } from '../types/music';
+import { usePlatform } from '../context/PlatformContext';
+import { ViewMode, UserRole } from '../types/music';
 
 export const Navbar: React.FC = () => {
   const {
@@ -20,6 +38,9 @@ export const Navbar: React.FC = () => {
     profile,
     role,
     isAdmin,
+    isSuperAdmin,
+    isReviewer,
+    isEditor,
     isCreator,
     signOut,
     setIsAuthModalOpen,
@@ -29,13 +50,33 @@ export const Navbar: React.FC = () => {
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  const navItems: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
+  const pendingCount = tracks.filter((t) => t.status === 'pending_review').length;
+
+  const navItems: { id: ViewMode; label: string; icon: React.ReactNode; show?: boolean; badge?: number }[] = [
     { id: 'discover', label: 'Discover', icon: <Compass className="w-4 h-4" /> },
     { id: 'library', label: 'Tracks', icon: <Music className="w-4 h-4" /> },
     { id: 'artist-profile', label: 'Artist Profile', icon: <User className="w-4 h-4" /> },
     { id: 'my-uploads', label: 'My Uploads', icon: <Upload className="w-4 h-4" /> },
     { id: 'favorites', label: 'Favorites', icon: <Heart className="w-4 h-4" /> },
     { id: 'lyrics-studio', label: 'Sync Studio', icon: <Mic2 className="w-4 h-4" /> },
+    {
+      id: 'artist-analytics',
+      label: 'Artist Analytics',
+      icon: <TrendingUp className="w-4 h-4 text-emerald-400" />,
+    },
+    {
+      id: 'review-queue',
+      label: 'Review Queue',
+      icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
+      show: isReviewer || isAdmin,
+      badge: pendingCount,
+    },
+    {
+      id: 'super-panel',
+      label: 'Super Panel',
+      icon: <Crown className="w-4 h-4 text-amber-400" />,
+      show: isSuperAdmin || isAdmin,
+    },
   ];
 
   const handleUploadClick = () => {
@@ -45,7 +86,11 @@ export const Navbar: React.FC = () => {
       return;
     }
     if (!isCreator && !isAdmin) {
-      if (confirm('Uploading songs is available to Creator / Artist accounts. Would you like to switch your account role to Creator now?')) {
+      if (
+        confirm(
+          'Uploading songs is available to Creator / Artist accounts. Would you like to switch your account role to Creator now?'
+        )
+      ) {
         updateUserRole('creator');
         setIsUploadModalOpen(true);
       }
@@ -54,8 +99,17 @@ export const Navbar: React.FC = () => {
     setIsUploadModalOpen(true);
   };
 
+  const { settings } = usePlatform();
+
   return (
-    <header className="sticky top-0 z-40 bg-[#070e17]/95 backdrop-blur-md border-b border-sky-950/60 px-4 lg:px-8 py-3">
+    <>
+      {settings?.announcementEnabled && settings?.announcementText && (
+        <div className="bg-gradient-to-r from-sky-600 via-blue-700 to-sky-600 text-white text-xs font-semibold py-1.5 px-4 text-center flex items-center justify-center gap-2 shadow-md relative z-50">
+          <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <span>{settings.announcementText}</span>
+        </div>
+      )}
+      <header className="sticky top-0 z-40 bg-[#070e17]/95 backdrop-blur-md border-b border-sky-950/60 px-4 lg:px-8 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 md:gap-8">
         {/* Zone 1: Brand Lockup with Official Logo */}
         <div
@@ -99,38 +153,65 @@ export const Navbar: React.FC = () => {
 
         {/* Zone 2: Navigation Links */}
         <nav className="hidden lg:flex items-center gap-1">
-          {navItems.map((item) => {
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveView(item.id)}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                  isActive
-                    ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)]'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                {item.id === 'my-uploads' && tracks.filter((t) => t.isCustomUpload).length > 0 && (
-                  <span className="ml-0.5 text-[10px] bg-sky-950 text-sky-300 px-1.5 py-0.2 rounded-full border border-sky-800/60 font-mono">
-                    {tracks.filter((t) => t.isCustomUpload).length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {navItems
+            .filter((item) => item.show !== false)
+            .map((item) => {
+              const isActive = activeView === item.id;
+              const isSuper = item.id === 'super-panel';
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveView(item.id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer relative ${
+                    isActive
+                      ? isSuper
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                        : 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)]'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="text-[10px] bg-amber-500 text-black px-1.5 py-0.2 rounded-full font-bold font-mono animate-pulse">
+                      {item.badge}
+                    </span>
+                  )}
+                  {item.id === 'my-uploads' && tracks.filter((t) => t.isCustomUpload).length > 0 && (
+                    <span className="ml-0.5 text-[10px] bg-sky-950 text-sky-300 px-1.5 py-0.2 rounded-full border border-sky-800/60 font-mono">
+                      {tracks.filter((t) => t.isCustomUpload).length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
         </nav>
 
         {/* Zone 3: Actions & Account Authentication */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Quick Super User Panel Button */}
+          {(isSuperAdmin || isAdmin) && (
+            <button
+              onClick={() => setActiveView('super-panel')}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeView === 'super-panel'
+                  ? 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5" />
+              <span>Super Panel</span>
+            </button>
+          )}
+
           <button
             onClick={handleUploadClick}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 rounded-lg shadow-[0_0_16px_rgba(2,132,199,0.35)] transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 rounded-lg shadow-[0_0_16px_rgba(2,132,199,0.35)] transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            <span>Upload Track</span>
+            <span className="hidden sm:inline">Upload Track</span>
+            <span className="sm:hidden">Upload</span>
           </button>
 
           {/* User Account Controls */}
@@ -153,14 +234,30 @@ export const Navbar: React.FC = () => {
                   </span>
                   <span
                     className={`text-[9px] font-mono uppercase font-bold tracking-wider ${
-                      isAdmin
+                      isSuperAdmin
                         ? 'text-amber-400'
+                        : isAdmin
+                        ? 'text-amber-300'
+                        : isReviewer
+                        ? 'text-emerald-400'
+                        : isEditor
+                        ? 'text-cyan-400'
                         : isCreator
                         ? 'text-sky-400'
                         : 'text-slate-400'
                     }`}
                   >
-                    {isAdmin ? 'Admin' : isCreator ? 'Artist / Creator' : 'Listener'}
+                    {isSuperAdmin
+                      ? 'Super Admin'
+                      : isAdmin
+                      ? 'Admin'
+                      : isReviewer
+                      ? 'Review Team'
+                      : isEditor
+                      ? 'Editor'
+                      : isCreator
+                      ? 'Creator'
+                      : 'Listener'}
                   </span>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -168,49 +265,55 @@ export const Navbar: React.FC = () => {
 
               {/* Profile Dropdown Menu */}
               {showProfileMenu && (
-                <div className="absolute right-0 top-12 w-64 bg-[#081322] border border-sky-900/80 rounded-2xl p-4 shadow-2xl z-50 animate-in fade-in duration-150">
+                <div className="absolute right-0 top-12 w-72 bg-[#081322] border border-sky-900/80 rounded-2xl p-4 shadow-2xl z-50 animate-in fade-in duration-150">
                   <div className="pb-3 border-b border-sky-950">
                     <p className="text-xs font-bold text-white truncate">
                       {profile?.displayName || user.displayName || 'BC Africa User'}
                     </p>
                     <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-sky-950 border border-sky-800 text-sky-300">
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase bg-sky-950 border border-sky-800 text-sky-300">
                       <Shield className="w-3 h-3 text-sky-400" />
                       <span>Role: {role}</span>
                     </div>
                   </div>
 
-                  {/* Switch Role Option */}
-                  {!isAdmin && (
+                  {/* Super User Quick Jump */}
+                  {(isSuperAdmin || isAdmin) && (
+                    <div className="py-2.5 border-b border-sky-950">
+                      <button
+                        onClick={() => {
+                          setActiveView('super-panel');
+                          setShowProfileMenu(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <Crown className="w-4 h-4 text-amber-400" />
+                        <span>Open Super User Panel</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Switch Active Role Option for Testing & Flexibility */}
+                  {!isSuperAdmin && (
                     <div className="py-3 border-b border-sky-950">
-                      <p className="text-[11px] text-slate-400 mb-2">Switch Active Role:</p>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <button
-                          onClick={() => {
-                            updateUserRole('creator');
-                            setShowProfileMenu(false);
-                          }}
-                          className={`px-2.5 py-1.5 rounded-lg border text-left font-medium transition-colors cursor-pointer ${
-                            isCreator
-                              ? 'bg-sky-600 text-white border-sky-500'
-                              : 'bg-sky-950/40 text-slate-300 border-sky-900/60 hover:text-white'
-                          }`}
-                        >
-                          Creator
-                        </button>
-                        <button
-                          onClick={() => {
-                            updateUserRole('listener');
-                            setShowProfileMenu(false);
-                          }}
-                          className={`px-2.5 py-1.5 rounded-lg border text-left font-medium transition-colors cursor-pointer ${
-                            !isCreator
-                              ? 'bg-sky-600 text-white border-sky-500'
-                              : 'bg-sky-950/40 text-slate-300 border-sky-900/60 hover:text-white'
-                          }`}
-                        >
-                          Listener
-                        </button>
+                      <p className="text-[11px] text-slate-400 mb-2 font-medium">Switch Active Role:</p>
+                      <div className="grid grid-cols-2 gap-1.5 text-xs">
+                        {(['creator', 'listener', 'editor', 'reviewer'] as UserRole[]).map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => {
+                              updateUserRole(r);
+                              setShowProfileMenu(false);
+                            }}
+                            className={`px-2 py-1.5 rounded-lg border text-left font-medium capitalize text-[11px] transition-colors cursor-pointer ${
+                              role === r
+                                ? 'bg-sky-600 text-white border-sky-500'
+                                : 'bg-sky-950/40 text-slate-300 border-sky-900/60 hover:text-white'
+                            }`}
+                          >
+                            {r}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -226,6 +329,31 @@ export const Navbar: React.FC = () => {
                       <User className="w-3.5 h-3.5 text-sky-400" />
                       <span>View Public Artist Profile</span>
                     </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveView('artist-analytics');
+                        setShowProfileMenu(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-emerald-300 hover:text-white hover:bg-emerald-950/40 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Artist Analytics & Royalties</span>
+                    </button>
+
+                    {(isReviewer || isAdmin) && (
+                      <button
+                        onClick={() => {
+                          setActiveView('review-queue');
+                          setShowProfileMenu(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-emerald-300 hover:text-white hover:bg-emerald-950/40 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Music Review Queue ({pendingCount})</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         signOut();
@@ -279,6 +407,6 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
     </header>
+    </>
   );
 };
-

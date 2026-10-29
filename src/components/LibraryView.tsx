@@ -5,14 +5,16 @@ import { TrackCard } from './TrackCard';
 import { TrackTable } from './TrackTable';
 
 export const LibraryView: React.FC = () => {
-  const { tracks, searchQuery, selectedGenre, setSelectedGenre } = useAudio();
+  const { tracks, approvedTracks, searchQuery, selectedGenre, setSelectedGenre } = useAudio();
   const [layoutMode, setLayoutMode] = useState<'grid' | 'table'>('table');
   const [sortBy, setSortBy] = useState<'title' | 'artist' | 'duration' | 'plays'>('plays');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const genres = ['all', 'Afrobeats', 'Amapiano', 'Highlife', 'Afro-Soul', 'Afro-Fusion'];
 
-  const filtered = tracks.filter((t) => {
+  const publicCatalog = approvedTracks.length > 0 ? approvedTracks : tracks;
+
+  const filtered = publicCatalog.filter((t) => {
     const matchesSearch =
       !searchQuery ||
       t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

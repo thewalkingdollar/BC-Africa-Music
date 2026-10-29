@@ -29,11 +29,37 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Admin authorization check: either in admins collection or bootstrapped admin email
+    // Admin authorization check: either in admins collection, bootstrapped admin email, or user profile role
     function isAdmin() {
       return isSignedIn() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (request.auth.token.email == 'bcafricao@gmail.com' && request.auth.token.email_verified == true)
+        (request.auth.token.email == 'bcafricao@gmail.com' && request.auth.token.email_verified == true) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin']
+        )
+      );
+    }
+
+    // Music Review Team role
+    function isReviewer() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['reviewer', 'admin', 'super_admin']
+        )
+      );
+    }
+
+    // Editorial Team role (responsible for lyrics formatting, sync verification, genre & metadata curation)
+    function isEditor() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['editor', 'admin', 'super_admin']
+        )
       );
     }
 
@@ -43,7 +69,7 @@ service cloud.firestore {
         isAdmin() ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'creator'
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['creator', 'editor', 'reviewer', 'admin', 'super_admin']
         )
       );
     }
@@ -55,7 +81,7 @@ service cloud.firestore {
         data.uid is string && data.uid.size() <= 128 &&
         data.email is string && data.email.size() <= 256 &&
         data.displayName is string && data.displayName.size() <= 100 &&
-        data.role in ['listener', 'creator', 'admin'] &&
+        data.role in ['listener', 'creator', 'editor', 'reviewer', 'admin', 'super_admin'] &&
         (!('bio' in data) || (data.bio is string && data.bio.size() <= 500)) &&
         (!('artistStageName' in data) || (data.artistStageName is string && data.artistStageName.size() <= 100)) &&
         (!('country' in data) || (data.country is string && data.country.size() <= 80));
@@ -64,7 +90,7 @@ service cloud.firestore {
     // 4. Track Validation Helper
     function isValidTrack(data) {
       return data.keys().hasAll(['id', 'title', 'artist', 'ownerId', 'audioUrl']) &&
-        data.keys().hasOnly(['id', 'title', 'artist', 'album', 'genre', 'duration', 'audioUrl', 'coverUrl', 'lyricsRaw', 'lyricsSynced', 'ownerId', 'ownerEmail', 'ownerName', 'plays', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'title', 'artist', 'album', 'genre', 'duration', 'audioUrl', 'coverUrl', 'lyricsRaw', 'lyricsSynced', 'ownerId', 'ownerEmail', 'ownerName', 'status', 'reviewerNotes', 'reviewedBy', 'reviewedAt', 'plays', 'createdAt', 'updatedAt']) &&
         data.id is string && data.id.size() <= 128 &&
         data.title is string && data.title.size() <= 150 &&
         data.artist is string && data.artist.size() <= 120 &&
@@ -74,19 +100,22 @@ service cloud.firestore {
         (!('genre' in data) || (data.genre is string && data.genre.size() <= 60)) &&
         (!('duration' in data) || data.duration is number) &&
         (!('coverUrl' in data) || (data.coverUrl is string && data.coverUrl.size() <= 2048)) &&
-        (!('lyricsRaw' in data) || (data.lyricsRaw is string && data.lyricsRaw.size() <= 15000));
+        (!('lyricsRaw' in data) || (data.lyricsRaw is string && data.lyricsRaw.size() <= 15000)) &&
+        (!('status' in data) || data.status in ['pending_review', 'approved', 'rejected']) &&
+        (!('reviewerNotes' in data) || (data.reviewerNotes is string && data.reviewerNotes.size() <= 1000));
     }
 
     // 5. PlayEvent Validation Helper
     function isValidPlay(data) {
       return data.keys().hasAll(['trackId', 'timestamp']) &&
-        data.keys().hasOnly(['trackId', 'timestamp', 'playedAt', 'userId', 'trackTitle', 'artist']) &&
+        data.keys().hasOnly(['trackId', 'timestamp', 'playedAt', 'userId', 'trackTitle', 'artist', 'artistId']) &&
         data.trackId is string && data.trackId.size() <= 128 &&
         data.timestamp is number &&
         (!('playedAt' in data) || (data.playedAt is string && data.playedAt.size() <= 64)) &&
         (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
         (!('trackTitle' in data) || (data.trackTitle is string && data.trackTitle.size() <= 150)) &&
-        (!('artist' in data) || (data.artist is string && data.artist.size() <= 120));
+        (!('artist' in data) || (data.artist is string && data.artist.size() <= 120)) &&
+        (!('artistId' in data) || (data.artistId is string && data.artistId.size() <= 128));
     }
 
     // 6. ArtistProfile Validation Helper
@@ -104,27 +133,88 @@ service cloud.firestore {
         (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
-    // 7. User Profiles Collection Rules
+    // 7. Platform Settings Validation Helper
+    function isValidPlatformSettings(data) {
+      return (!('theme' in data) || (data.theme is string && data.theme.size() <= 50)) &&
+        (!('customAccent' in data) || (data.customAccent is string && data.customAccent.size() <= 20)) &&
+        (!('glowLevel' in data) || data.glowLevel in ['subtle', 'balanced', 'vibrant']) &&
+        (!('advertsEnabled' in data) || data.advertsEnabled is bool) &&
+        (!('adFrequencyTracks' in data) || data.adFrequencyTracks is number) &&
+        (!('adTitle' in data) || (data.adTitle is string && data.adTitle.size() <= 200)) &&
+        (!('sponsorName' in data) || (data.sponsorName is string && data.sponsorName.size() <= 100)) &&
+        (!('adDescription' in data) || (data.adDescription is string && data.adDescription.size() <= 500)) &&
+        (!('adBannerUrl' in data) || (data.adBannerUrl is string && data.adBannerUrl.size() <= 2048)) &&
+        (!('adAudioUrl' in data) || (data.adAudioUrl is string && data.adAudioUrl.size() <= 2048)) &&
+        (!('adCtaText' in data) || (data.adCtaText is string && data.adCtaText.size() <= 60)) &&
+        (!('adLinkUrl' in data) || (data.adLinkUrl is string && data.adLinkUrl.size() <= 2048)) &&
+        (!('skipAfterSeconds' in data) || data.skipAfterSeconds is number) &&
+        (!('artistRoyaltySharePercent' in data) || data.artistRoyaltySharePercent is number) &&
+        (!('estimatedCpmRate' in data) || data.estimatedCpmRate is number) &&
+        (!('announcementEnabled' in data) || data.announcementEnabled is bool) &&
+        (!('announcementText' in data) || (data.announcementText is string && data.announcementText.size() <= 500));
+    }
+
+    // 8. Artist Tip Validation Helper
+    function isValidArtistTip(data) {
+      return data.keys().hasAll(['id', 'artistId', 'amount', 'senderName', 'createdAt', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'artistId', 'trackId', 'amount', 'currency', 'senderName', 'senderEmail', 'message', 'createdAt', 'timestamp']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.artistId is string && data.artistId.size() <= 128 &&
+        data.amount is number && data.amount > 0 &&
+        data.senderName is string && data.senderName.size() <= 100 &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        data.timestamp is number &&
+        (!('currency' in data) || (data.currency is string && data.currency.size() <= 10)) &&
+        (!('trackId' in data) || (data.trackId is string && data.trackId.size() <= 128)) &&
+        (!('senderEmail' in data) || (data.senderEmail is string && data.senderEmail.size() <= 256)) &&
+        (!('message' in data) || (data.message is string && data.message.size() <= 500));
+    }
+
+    // 9. Payout Request Validation Helper
+    function isValidPayoutRequest(data) {
+      return data.keys().hasAll(['id', 'artistId', 'amount', 'paymentMethod', 'accountDetails', 'status', 'requestedAt']) &&
+        data.keys().hasOnly(['id', 'artistId', 'artistName', 'artistEmail', 'amount', 'paymentMethod', 'accountDetails', 'status', 'requestedAt', 'processedAt', 'adminNotes']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.artistId is string && data.artistId.size() <= 128 &&
+        data.amount is number && data.amount > 0 &&
+        data.paymentMethod is string && data.paymentMethod.size() <= 50 &&
+        data.accountDetails is string && data.accountDetails.size() <= 200 &&
+        data.status in ['pending', 'processing', 'paid', 'rejected'] &&
+        data.requestedAt is string && data.requestedAt.size() <= 64 &&
+        (!('artistName' in data) || (data.artistName is string && data.artistName.size() <= 100)) &&
+        (!('artistEmail' in data) || (data.artistEmail is string && data.artistEmail.size() <= 256)) &&
+        (!('processedAt' in data) || (data.processedAt is string && data.processedAt.size() <= 64)) &&
+        (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 500));
+    }
+
+    // 8. User Profiles Collection Rules
     match /users/{userId} {
+      // Any signed in user can view user profiles
       allow read: if isSignedIn();
+
       allow create: if isOwner(userId) &&
         isValidUserProfile(incoming()) &&
         incoming().uid == request.auth.uid &&
-        (incoming().role != 'admin' || isAdmin());
-      allow update: if isOwner(userId) &&
-        isValidUserProfile(incoming()) &&
-        incoming().uid == existing().uid &&
-        incoming().email == existing().email &&
-        (incoming().role == existing().role || isAdmin());
+        (!incoming().role in ['admin', 'super_admin'] || isAdmin());
+
+      allow update: if (
+        // Self update: can update profile details but cannot self-promote to admin/super_admin
+        (isOwner(userId) &&
+          isValidUserProfile(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          (incoming().role == existing().role || (existing().role in ['listener', 'creator'] && incoming().role in ['listener', 'creator']))) ||
+        // Super Admin / Admin role promotion management
+        (isAdmin() && isValidUserProfile(incoming()))
+      );
+
       allow delete: if isAdmin();
     }
 
-    // 8. Public Artist Profiles Collection Rules
+    // 9. Public Artist Profiles Collection Rules
     match /artists/{artistId} {
-      // Public-facing: anyone (including guests) can read artist profiles, bios, stage name, country
       allow read: if true;
 
-      // Creator, admin, or the owner can create their artist profile
       allow create: if isSignedIn() &&
         (isOwner(artistId) || isAdmin()) &&
         isValidId(artistId) &&
@@ -141,26 +231,44 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (isOwner(artistId) || isAdmin());
     }
 
-    // 9. Tracks Collection Rules (Streaming & Lyrics Sync)
+    // 10. Tracks Collection Rules (Streaming, Review Lifecycle, Editorial Sync)
     match /tracks/{trackId} {
       // Anyone can stream music & read lyrics
       allow read: if true;
 
-      // Only creators or admins can upload tracks
+      // Creators or admins can upload tracks
       allow create: if isSignedIn() &&
         (isCreator() || isAdmin()) &&
         isValidId(trackId) &&
         isValidTrack(incoming()) &&
         incoming().ownerId == request.auth.uid;
 
-      // Track owner or admin can update metadata or synchronized lyrics; OR anyone can increment play counter
+      // Update conditions:
+      // A. Track Owner or Admin updating their track
+      // B. Music Review Team approving/rejecting track
+      // C. Editorial Team updating lyrics, sync, or metadata
+      // D. Play counter increment by any listener
       allow update: if (
+        // A. Owner or Admin full update
         (isSignedIn() &&
           isValidTrack(incoming()) &&
           incoming().id == existing().id &&
           incoming().ownerId == existing().ownerId &&
           (resource.data.ownerId == request.auth.uid || isAdmin())) ||
-        // Action: Play increment counter
+
+        // B. Music Review Team action (approval, rejection, review notes)
+        (isReviewer() &&
+          isValidTrack(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId) ||
+
+        // C. Editorial Team action (lyrics, synced timestamps, metadata curation)
+        (isEditor() &&
+          isValidTrack(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId) ||
+
+        // D. Play increment counter
         (incoming().diff(existing()).affectedKeys().hasOnly(['plays']) &&
           incoming().plays is number)
       );
@@ -170,17 +278,55 @@ service cloud.firestore {
         (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
-    // 10. Admins Collection Rules
+    // 11. Platform Settings Collection Rules (Theme & Adverts Engine)
+    match /settings/{settingId} {
+      // Global read: all listeners need theme & ad settings
+      allow read: if true;
+      // Admin / Super Admin write access
+      allow write: if isAdmin() && isValidPlatformSettings(incoming());
+    }
+
+    // 12. Admins Collection Rules
     match /admins/{adminId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // 11. Plays Collection Rules (Streaming play events for 24h trending)
+    // 13. Plays Collection Rules (Streaming play events for 24h trending)
     match /plays/{playId} {
       allow read: if true;
       allow create: if isValidPlay(incoming());
       allow update, delete: if false; // Immutable stream event log
+    }
+
+    // 14. Tips Collection Rules (Direct Fan Support & Patronage)
+    match /tips/{tipId} {
+      allow read: if true;
+      allow create: if isValidId(tipId) &&
+        isValidArtistTip(incoming()) &&
+        incoming().id == tipId;
+      allow update, delete: if isAdmin();
+    }
+
+    // 15. Payouts Collection Rules (Artist Royalty Withdrawals)
+    match /payouts/{payoutId} {
+      // Artist can read their own payout requests; Admins can read all payouts
+      allow read: if isSignedIn() && (
+        resource.data.artistId == request.auth.uid || isAdmin()
+      );
+
+      // Artist can submit payout request
+      allow create: if isSignedIn() &&
+        isValidId(payoutId) &&
+        isValidPayoutRequest(incoming()) &&
+        incoming().id == payoutId &&
+        incoming().artistId == request.auth.uid &&
+        incoming().status == 'pending';
+
+      // Admin can update status, processedAt, or admin notes
+      allow update: if isAdmin() && isValidPayoutRequest(incoming());
+
+      allow delete: if isAdmin();
     }
   }
 }
