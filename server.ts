@@ -684,7 +684,7 @@ app.get(['/api/stream/:filename', '/uploads/:filename'], (req: Request, res: Res
 });
 
 // Direct server-side upload endpoint
-app.post('/api/upload', (req: Request, res: Response) => {
+app.post('/api/upload', authenticateToken, (req: Request, res: Response) => {
   try {
     const { filename, fileData, mimeType } = req.body;
 
