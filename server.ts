@@ -763,7 +763,7 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, () => {
     console.log(`[BC Africa Music] 100% Self-Hosted server active on port ${PORT}`);
     console.log(`[BC Africa Music] Audio uploads store: ${UPLOADS_DIR}`);
     console.log(`[BC Africa Music] Self-hosted data store: ${DATA_DIR}`);

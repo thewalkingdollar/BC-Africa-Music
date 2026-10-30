@@ -1,0 +1,19 @@
+{
+  "theme": "bc-blue",
+  "glowLevel": "balanced",
+  "advertsEnabled": true,
+  "adFrequencyTracks": 3,
+  "adTitle": "Stream Pure African Sound in Lossless HD",
+  "sponsorName": "BC Africa Music & MTN Pulse Africa",
+  "adDescription": "Empowering independent African talent across Lagos, Lusaka, Nairobi, Johannesburg & Accra. Enjoy synchronized lyrics and seamless audio streaming.",
+  "adBannerUrl": "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=1200&auto=format&fit=crop&q=80",
+  "adCtaText": "Discover BC Africa Live",
+  "adLinkUrl": "https://bcafricamusic.com",
+  "skipAfterSeconds": 5,
+  "totalAdImpressions": 142,
+  "artistRoyaltySharePercent": 70,
+  "estimatedCpmRate": 4.5,
+  "announcementEnabled": true,
+  "announcementText": "🔥 Welcome to BC Africa Music! 100% Self-Hosted & African Independent Music Streaming.",
+  "updatedAt": "2026-10-30T00:04:56.306Z"
+}

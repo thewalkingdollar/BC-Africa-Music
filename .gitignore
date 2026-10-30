@@ -1,9 +1,8 @@
-node_modules
-dist
-.env
-.env.local
-data/
-uploads/
-*.log
-.pm2
+node_modules/
+build/
+dist/
+coverage/
 .DS_Store
+*.log
+.env*
+!.env.example

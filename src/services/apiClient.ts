@@ -83,7 +83,7 @@ class ApiClient {
       stageName?: string;
       country?: string;
     }): Promise<AuthResponse> => {
-      const res = await this.request<AuthResponse>('/bcafricamusic/api/auth/register', {
+      const res = await this.request<AuthResponse>('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -93,7 +93,7 @@ class ApiClient {
     },
 
     login: async (email: string, pass: string): Promise<AuthResponse> => {
-      const res = await this.request<AuthResponse>('/bcafricamusic/api/auth/login', {
+      const res = await this.request<AuthResponse>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password: pass }),
       });
@@ -106,7 +106,7 @@ class ApiClient {
       const token = this.getToken();
       if (!token) return null;
       try {
-        const res = await this.request<{ user: UserProfile }>('/bcafricamusic/api/auth/me');
+        const res = await this.request<{ user: UserProfile }>('/api/auth/me');
         localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.user));
         return res.user;
       } catch {
@@ -117,7 +117,7 @@ class ApiClient {
     },
 
     updateProfile: async (data: Partial<UserProfile>): Promise<UserProfile> => {
-      const res = await this.request<{ user: UserProfile }>('/bcafricamusic/api/auth/profile', {
+      const res = await this.request<{ user: UserProfile }>('/api/auth/profile', {
         method: 'PUT',
         body: JSON.stringify(data),
       });
@@ -127,7 +127,7 @@ class ApiClient {
 
     getAllUsers: async (): Promise<UserProfile[]> => {
       try {
-        return await this.request<UserProfile[]>('/bcafricamusic/api/auth/users');
+        return await this.request<UserProfile[]>('/api/auth/users');
       } catch {
         const cached = localStorage.getItem(USER_CACHE_KEY);
         return cached ? [JSON.parse(cached)] : [];
@@ -154,7 +154,7 @@ class ApiClient {
   public tracks = {
     getAll: async (): Promise<Track[]> => {
       try {
-        return await this.request<Track[]>('/bcafricamusic/api/tracks');
+        return await this.request<Track[]>('/api/tracks');
       } catch (err) {
         console.warn('Failed to fetch tracks from self-hosted server:', err);
         return [];
@@ -162,7 +162,7 @@ class ApiClient {
     },
 
     create: async (track: Partial<Track>): Promise<Track> => {
-      return await this.request<Track>('/bcafricamusic/api/tracks', {
+      return await this.request<Track>('/api/tracks', {
         method: 'POST',
         body: JSON.stringify(track),
       });
@@ -192,7 +192,7 @@ class ApiClient {
       artistId?: string;
     }): Promise<void> => {
       try {
-        await this.request('/bcafricamusic/api/plays', {
+        await this.request('/api/plays', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
@@ -203,7 +203,7 @@ class ApiClient {
 
     getRecent24h: async (): Promise<Record<string, number>> => {
       try {
-        return await this.request<Record<string, number>>('/bcafricamusic/api/plays/recent');
+        return await this.request<Record<string, number>>('/api/plays/recent');
       } catch {
         return {};
       }
@@ -222,7 +222,7 @@ class ApiClient {
     },
 
     create: async (tip: Partial<ArtistTip>): Promise<ArtistTip> => {
-      const res = await this.request<{ success: boolean; tip: ArtistTip }>('/bcafricamusic/api/tips', {
+      const res = await this.request<{ success: boolean; tip: ArtistTip }>('/api/tips', {
         method: 'POST',
         body: JSON.stringify(tip),
       });
@@ -242,7 +242,7 @@ class ApiClient {
     },
 
     create: async (payout: Partial<PayoutRequest>): Promise<PayoutRequest> => {
-      const res = await this.request<{ success: boolean; payout: PayoutRequest }>('/bcafricamusic/api/payouts', {
+      const res = await this.request<{ success: boolean; payout: PayoutRequest }>('/api/payouts', {
         method: 'POST',
         body: JSON.stringify(payout),
       });
@@ -273,11 +273,11 @@ class ApiClient {
   // PLATFORM SETTINGS
   public settings = {
     get: async (): Promise<PlatformSettings> => {
-      return await this.request<PlatformSettings>('/bcafricamusic/api/settings');
+      return await this.request<PlatformSettings>('/api/settings');
     },
 
     update: async (settings: Partial<PlatformSettings>): Promise<PlatformSettings> => {
-      return await this.request<PlatformSettings>('/bcafricamusic/api/settings', {
+      return await this.request<PlatformSettings>('/api/settings', {
         method: 'PUT',
         body: JSON.stringify(settings),
       });
@@ -290,7 +290,7 @@ class ApiClient {
     fileData: string,
     mimeType?: string
   ): Promise<{ url: string; filename: string }> => {
-    return await this.request<{ url: string; filename: string }>('/bcafricamusic/api/upload', {
+    return await this.request<{ url: string; filename: string }>('/api/upload', {
       method: 'POST',
       body: JSON.stringify({ filename, fileData, mimeType }),
     });
