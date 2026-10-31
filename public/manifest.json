@@ -1,0 +1,32 @@
+{
+  "name": "BC Africa Music - Studio Lossless Player",
+  "short_name": "BC Africa",
+  "description": "Stream, discover, and upload African and global music with studio lossless audio and synchronized karaoke lyrics.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070e17",
+  "theme_color": "#070e17",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "entertainment", "audio"],
+  "shortcuts": [
+    {
+      "name": "Discover Zed Beats",
+      "url": "/?genre=Zed+Beats",
+      "description": "Zambian & African Hits"
+    },
+    {
+      "name": "Artist Studio",
+      "url": "/?view=analytics",
+      "description": "Artist Monetization & Payouts"
+    }
+  ]
+}

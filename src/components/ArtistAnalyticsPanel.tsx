@@ -37,6 +37,23 @@ import { Track, ArtistTip, PayoutRequest, PayoutStatus } from '../types/music';
 import { formatTime } from '../utils/lrcParser';
 import { apiClient } from '../services/apiClient';
 import { TipArtistModal } from './TipArtistModal';
+import {
+  ZambiaFlagVector,
+  NigeriaFlagVector,
+  SouthAfricaFlagVector,
+  KenyaFlagVector,
+  GhanaFlagVector,
+  AfricaGlobeVector,
+  MtnMomoVector,
+  AirtelMoneyVector,
+  ZamtelVector,
+  ZanacoVector,
+  StandardCharteredVector,
+  StanbicVector,
+  FnbVector,
+  BankWireVector,
+  PaypalVector,
+} from './icons/VectorIcons';
 
 export interface ConnectedAccount {
   type: 'mobile_money' | 'bank_account';
@@ -47,32 +64,32 @@ export interface ConnectedAccount {
   savedAt: string;
 }
 
-const ZAMBIA_PROVIDERS = [
-  { name: 'MTN Mobile Money Zambia (MoMo)', type: 'mobile_money', code: 'ZM_MTN', icon: '🇿🇲' },
-  { name: 'Airtel Money Zambia', type: 'mobile_money', code: 'ZM_AIRTEL', icon: '🇿🇲' },
-  { name: 'Zamtel Kwacha (Zambia)', type: 'mobile_money', code: 'ZM_ZAMTEL', icon: '🇿🇲' },
-  { name: 'Zanaco Bank (Zambia National Commercial Bank)', type: 'bank_account', code: 'ZM_ZANACO', icon: '🇿🇲' },
-  { name: 'Standard Chartered Bank Zambia', type: 'bank_account', code: 'ZM_STANCHART', icon: '🇿🇲' },
-  { name: 'Stanbic Bank Zambia', type: 'bank_account', code: 'ZM_STANBIC', icon: '🇿🇲' },
-  { name: 'FNB Zambia (First National Bank)', type: 'bank_account', code: 'ZM_FNB', icon: '🇿🇲' },
-  { name: 'ABSA Bank Zambia', type: 'bank_account', code: 'ZM_ABSA', icon: '🇿🇲' },
+export const ZAMBIA_PROVIDERS = [
+  { name: 'MTN Mobile Money Zambia (MoMo)', type: 'mobile_money' as const, code: 'ZM_MTN', VectorIcon: MtnMomoVector },
+  { name: 'Airtel Money Zambia', type: 'mobile_money' as const, code: 'ZM_AIRTEL', VectorIcon: AirtelMoneyVector },
+  { name: 'Zamtel Kwacha (Zambia)', type: 'mobile_money' as const, code: 'ZM_ZAMTEL', VectorIcon: ZamtelVector },
+  { name: 'Zanaco Bank (Zambia National Commercial Bank)', type: 'bank_account' as const, code: 'ZM_ZANACO', VectorIcon: ZanacoVector },
+  { name: 'Standard Chartered Bank Zambia', type: 'bank_account' as const, code: 'ZM_STANCHART', VectorIcon: StandardCharteredVector },
+  { name: 'Stanbic Bank Zambia', type: 'bank_account' as const, code: 'ZM_STANBIC', VectorIcon: StanbicVector },
+  { name: 'FNB Zambia (First National Bank)', type: 'bank_account' as const, code: 'ZM_FNB', VectorIcon: FnbVector },
+  { name: 'ABSA Bank Zambia', type: 'bank_account' as const, code: 'ZM_ABSA', VectorIcon: BankWireVector },
 ];
 
-const OTHER_PROVIDERS = [
-  { name: 'Safaricom M-Pesa (Kenya & East Africa)', type: 'mobile_money', code: 'KE_MPESA', icon: '🇰🇪' },
-  { name: 'MTN MoMo Ghana', type: 'mobile_money', code: 'GH_MTN', icon: '🇬🇭' },
-  { name: 'OPay / PalmPay Nigeria', type: 'mobile_money', code: 'NG_OPAY', icon: '🇳🇬' },
-  { name: 'Orange Money (Francophone Africa)', type: 'mobile_money', code: 'FR_ORANGE', icon: '🇨🇮' },
-  { name: 'Nigeria Commercial Bank (GTBank / Zenith / Access)', type: 'bank_account', code: 'NG_BANK', icon: '🇳🇬' },
-  { name: 'South Africa Bank (Capitec / FNB / Standard Bank)', type: 'bank_account', code: 'ZA_BANK', icon: '🇿🇦' },
-  { name: 'International Bank Wire (SWIFT / IBAN)', type: 'bank_account', code: 'INT_SWIFT', icon: '🌐' },
-  { name: 'PayPal Direct Payout', type: 'bank_account', code: 'INT_PAYPAL', icon: '🌐' },
+export const OTHER_PROVIDERS = [
+  { name: 'Safaricom M-Pesa (Kenya & East Africa)', type: 'mobile_money' as const, code: 'KE_MPESA', VectorIcon: AirtelMoneyVector },
+  { name: 'MTN MoMo Ghana', type: 'mobile_money' as const, code: 'GH_MTN', VectorIcon: MtnMomoVector },
+  { name: 'OPay / PalmPay Nigeria', type: 'mobile_money' as const, code: 'NG_OPAY', VectorIcon: BankWireVector },
+  { name: 'Orange Money (Francophone Africa)', type: 'mobile_money' as const, code: 'FR_ORANGE', VectorIcon: AirtelMoneyVector },
+  { name: 'Nigeria Commercial Bank (GTBank / Zenith / Access)', type: 'bank_account' as const, code: 'NG_BANK', VectorIcon: BankWireVector },
+  { name: 'South Africa Bank (Capitec / FNB / Standard Bank)', type: 'bank_account' as const, code: 'ZA_BANK', VectorIcon: FnbVector },
+  { name: 'International Bank Wire (SWIFT / IBAN)', type: 'bank_account' as const, code: 'INT_SWIFT', VectorIcon: BankWireVector },
+  { name: 'PayPal Direct Payout', type: 'bank_account' as const, code: 'INT_PAYPAL', VectorIcon: PaypalVector },
 ];
 
-const ALL_PAYOUT_PROVIDERS = [...ZAMBIA_PROVIDERS, ...OTHER_PROVIDERS];
+export const ALL_PAYOUT_PROVIDERS = [...ZAMBIA_PROVIDERS, ...OTHER_PROVIDERS];
 
 // Approximate live benchmark exchange rate for payout estimation: 1 USD ~ 27.50 ZMW
-const USD_TO_ZMW_RATE = 27.5;
+export const USD_TO_ZMW_RATE = 27.5;
 
 export const ArtistAnalyticsPanel: React.FC = () => {
   const {
@@ -92,21 +109,39 @@ export const ArtistAnalyticsPanel: React.FC = () => {
   const currentArtistId = user?.uid || 'current_user';
   const currentArtistName = profile?.artistStageName || profile?.displayName || 'BC Africa Artist';
 
-  // Live state from Firestore
+  // Live state from Server
   const [tips, setTips] = useState<ArtistTip[]>([]);
   const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // Connected Payout Account state (stored in localStorage keyed by artist ID)
-  const [connectedAccount, setConnectedAccount] = useState<ConnectedAccount | null>(() => {
-    if (!user) return null;
-    try {
-      const saved = localStorage.getItem(`bc_connected_payout_${user.uid}`);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
+  // Connected Payout Account state (stored on Ubuntu Server - Zero Local Storage)
+  const [connectedAccount, setConnectedAccount] = useState<ConnectedAccount | null>(null);
+
+  // Load connected account from server
+  useEffect(() => {
+    let mounted = true;
+    if (!user) {
+      setConnectedAccount(null);
+      return;
     }
-  });
+
+    async function loadAccount() {
+      if (!user) return;
+      try {
+        const acc = await apiClient.payouts.getAccount(user.uid);
+        if (mounted && acc) {
+          setConnectedAccount(acc as ConnectedAccount);
+        }
+      } catch (err) {
+        console.debug('Load payout account note:', err);
+      }
+    }
+
+    loadAccount();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   // Modals & UI states
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -245,8 +280,8 @@ export const ArtistAnalyticsPanel: React.FC = () => {
 
   const maxWeeklyStreams = Math.max(...weeklyTrendData.map((d) => d.streams), 1);
 
-  // Save Connected Account
-  const handleSaveConnectedAccount = (e: React.FormEvent) => {
+  // Save Connected Account to Server (Zero Local Storage)
+  const handleSaveConnectedAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     const account: ConnectedAccount = {
@@ -258,20 +293,25 @@ export const ArtistAnalyticsPanel: React.FC = () => {
       savedAt: new Date().toISOString(),
     };
     try {
-      localStorage.setItem(`bc_connected_payout_${user.uid}`, JSON.stringify(account));
+      await apiClient.payouts.saveAccount(user.uid, account);
       setConnectedAccount(account);
       setIsConnectAccountModalOpen(false);
     } catch (err) {
       console.error('Failed to save connected payout account:', err);
+      alert('Failed to save account to server.');
     }
   };
 
-  // Remove Connected Account
-  const handleDisconnectAccount = () => {
+  // Remove Connected Account on Server
+  const handleDisconnectAccount = async () => {
     if (!user) return;
-    if (confirm('Disconnect this saved payout method?')) {
-      localStorage.removeItem(`bc_connected_payout_${user.uid}`);
-      setConnectedAccount(null);
+    if (confirm('Disconnect this saved payout method from the server?')) {
+      try {
+        await apiClient.payouts.deleteAccount(user.uid);
+        setConnectedAccount(null);
+      } catch (err) {
+        console.error('Error disconnecting account:', err);
+      }
     }
   };
 
@@ -374,8 +414,9 @@ export const ArtistAnalyticsPanel: React.FC = () => {
                 <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
                   <ShieldCheck className="w-3.5 h-3.5" /> 100% Rights Owned
                 </span>
-                <span className="text-xs text-amber-300 font-semibold bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
-                  <span>🇿🇲</span> Zambia &amp; Pan-Africa
+                <span className="text-xs text-amber-300 font-semibold bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1.5">
+                  <ZambiaFlagVector size={14} />
+                  <span>Zambia &amp; Pan-Africa</span>
                 </span>
               </div>
               <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
@@ -1067,17 +1108,17 @@ export const ArtistAnalyticsPanel: React.FC = () => {
                   onChange={(e) => setConnectProvider(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-sky-500"
                 >
-                  <optgroup label="🇿🇲 Zambia Providers">
+                  <optgroup label="Zambia Providers (MTN, Airtel, Zamtel, Zanaco, Stanbic, FNB)">
                     {ZAMBIA_PROVIDERS.filter((p) => p.type === connectType).map((p) => (
                       <option key={p.name} value={p.name}>
-                        {p.icon} {p.name}
+                        {p.name}
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="🌍 Pan-Africa &amp; Global">
+                  <optgroup label="Pan-Africa &amp; Global Providers (M-Pesa, OPay, SWIFT, PayPal)">
                     {OTHER_PROVIDERS.filter((p) => p.type === connectType).map((p) => (
                       <option key={p.name} value={p.name}>
-                        {p.icon} {p.name}
+                        {p.name}
                       </option>
                     ))}
                   </optgroup>
@@ -1124,12 +1165,12 @@ export const ArtistAnalyticsPanel: React.FC = () => {
                   onChange={(e) => setConnectCountry(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-sky-500"
                 >
-                  <option value="Zambia">🇿🇲 Zambia</option>
-                  <option value="Nigeria">🇳🇬 Nigeria</option>
-                  <option value="South Africa">🇿🇦 South Africa</option>
-                  <option value="Ghana">🇬🇭 Ghana</option>
-                  <option value="Kenya">🇰🇪 Kenya</option>
-                  <option value="International">🌐 International / Diaspora</option>
+                  <option value="Zambia">Zambia</option>
+                  <option value="Nigeria">Nigeria</option>
+                  <option value="South Africa">South Africa</option>
+                  <option value="Ghana">Ghana</option>
+                  <option value="Kenya">Kenya</option>
+                  <option value="International">International / Diaspora</option>
                 </select>
               </div>
 
@@ -1299,24 +1340,24 @@ export const ArtistAnalyticsPanel: React.FC = () => {
                         onChange={(e) => setPayoutMethod(e.target.value)}
                         className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-sky-500"
                       >
-                        <optgroup label="🇿🇲 Zambia Mobile Money">
+                        <optgroup label="Zambia Mobile Money (MTN, Airtel, Zamtel)">
                           {ZAMBIA_PROVIDERS.filter((p) => p.type === 'mobile_money').map((p) => (
                             <option key={p.name} value={p.name}>
-                              {p.icon} {p.name}
+                              {p.name}
                             </option>
                           ))}
                         </optgroup>
-                        <optgroup label="🇿🇲 Zambia Commercial Banks">
+                        <optgroup label="Zambia Commercial Banks (Zanaco, Stanbic, FNB, ABSA, Stanchart)">
                           {ZAMBIA_PROVIDERS.filter((p) => p.type === 'bank_account').map((p) => (
                             <option key={p.name} value={p.name}>
-                              {p.icon} {p.name}
+                              {p.name}
                             </option>
                           ))}
                         </optgroup>
-                        <optgroup label="🌍 Pan-Africa &amp; Global">
+                        <optgroup label="Pan-Africa &amp; Global (M-Pesa, OPay, SWIFT, PayPal)">
                           {OTHER_PROVIDERS.map((p) => (
                             <option key={p.name} value={p.name}>
-                              {p.icon} {p.name}
+                              {p.name}
                             </option>
                           ))}
                         </optgroup>

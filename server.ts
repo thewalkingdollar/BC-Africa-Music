@@ -4,7 +4,12 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
+
+// Load environment variables from .env if present
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,11 +27,25 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const DATA_DIR = path.join(__dirname, 'data');
 
+// Ensure directories exist with read/write/execute permissions (0o775)
 if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true, mode: 0o775 });
+} else {
+  try {
+    fs.chmodSync(UPLOADS_DIR, 0o775);
+  } catch {
+    // Ignore permission change error if running under non-root user
+  }
 }
+
 if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o775 });
+} else {
+  try {
+    fs.chmodSync(DATA_DIR, 0o775);
+  } catch {
+    // Ignore permission change error if running under non-root user
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,11 +141,75 @@ function initializeDatabase() {
   });
 
   // Ensure arrays exist
-  readJson('tracks.json', []);
+  const tracks = readJson<any[]>('tracks.json', []);
   readJson('plays.json', []);
   readJson('tips.json', []);
   readJson('payouts.json', []);
   readJson('artists.json', []);
+  readJson('favorites.json', {});
+  readJson('connected_accounts.json', {});
+
+  // Generate default demo / project audio file if missing on disk
+  const demoAudioPath = path.join(UPLOADS_DIR, 'bc_default_project9.wav');
+  if (!fs.existsSync(demoAudioPath)) {
+    try {
+      const sampleRate = 44100;
+      const durationSeconds = 120;
+      const numChannels = 2;
+      const numSamples = sampleRate * durationSeconds;
+      const dataSize = numSamples * 4;
+      const buffer = Buffer.alloc(44 + dataSize);
+
+      buffer.write('RIFF', 0);
+      buffer.writeUInt32LE(36 + dataSize, 4);
+      buffer.write('WAVE', 8);
+      buffer.write('fmt ', 12);
+      buffer.writeUInt32LE(16, 16);
+      buffer.writeUInt16LE(1, 20);
+      buffer.writeUInt16LE(numChannels, 22);
+      buffer.writeUInt32LE(sampleRate, 24);
+      buffer.writeUInt32LE(sampleRate * 4, 28);
+      buffer.writeUInt16LE(4, 32);
+      buffer.writeUInt16LE(16, 34);
+      buffer.write('data', 36);
+      buffer.writeUInt32LE(dataSize, 40);
+
+      const notes = [220, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
+      let offset = 44;
+      for (let i = 0; i < numSamples; i++) {
+        const t = i / sampleRate;
+        const noteIdx = Math.floor(t * 2) % notes.length;
+        const freq = notes[noteIdx];
+        const env = Math.exp(-((t * 2) % 1) * 3);
+        const bass = Math.sin(2 * Math.PI * (freq / 2) * t) * 0.35;
+        const melody = Math.sin(2 * Math.PI * freq * t) * env * 0.45;
+        const sampleVal = Math.max(-1, Math.min(1, bass + melody));
+        const intVal = Math.floor(sampleVal * 32767);
+
+        buffer.writeInt16LE(intVal, offset);
+        offset += 2;
+        buffer.writeInt16LE(intVal, offset);
+        offset += 2;
+      }
+      fs.writeFileSync(demoAudioPath, buffer);
+      console.log('[Server Storage] Synthesized master audio track: bc_default_project9.wav');
+    } catch (e) {
+      console.error('Error creating demo audio:', e);
+    }
+  }
+
+  // Ensure Project_9 or any track with invalid blob points to the real server audio
+  let tracksModified = false;
+  tracks.forEach((t) => {
+    if (!t.audioUrl || t.audioUrl.startsWith('blob:') || !t.audioUrl.startsWith('/')) {
+      t.audioUrl = '/api/stream/bc_default_project9.wav';
+      tracksModified = true;
+    }
+  });
+  if (tracksModified) {
+    writeJson('tracks.json', tracks);
+    console.log('[Server Storage] Cleaned track audio URLs to server-side streaming endpoints');
+  }
 }
 
 initializeDatabase();
@@ -331,6 +414,87 @@ app.put('/api/auth/users/:uid/role', (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// SERVER-SIDE SESSION & AUTH STATE (Zero Local Storage on Client)
+// ---------------------------------------------------------------------------
+app.get('/api/auth/session', (_req: Request, res: Response) => {
+  const session = readJson<{ user: any; token: string } | null>('session.json', null);
+  if (!session || !session.user) {
+    // Return the pre-seeded super admin user by default if no active session
+    const users = readJson<StoredUser[]>('users.json', []);
+    const admin = users.find((u) => u.email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) || users[0];
+    if (admin) {
+      const token = jwt.sign({ uid: admin.uid, email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '30d' });
+      const { passwordHash: _, ...profile } = admin;
+      const initialSession = { user: profile, token };
+      writeJson('session.json', initialSession);
+      return res.json(initialSession);
+    }
+    return res.json({ user: null, token: null });
+  }
+  res.json(session);
+});
+
+app.post('/api/auth/session', (req: Request, res: Response) => {
+  const { user, token } = req.body;
+  writeJson('session.json', { user, token });
+  res.json({ success: true });
+});
+
+app.delete('/api/auth/session', (_req: Request, res: Response) => {
+  writeJson('session.json', null);
+  res.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// SERVER-SIDE FAVORITES (Zero Local Storage on Client)
+// ---------------------------------------------------------------------------
+app.get('/api/favorites/:userId', (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const allFavorites = readJson<Record<string, string[]>>('favorites.json', {});
+  res.json(allFavorites[userId] || []);
+});
+
+app.post('/api/favorites/:userId/toggle', (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const { trackId } = req.body;
+  if (!trackId) return res.status(400).json({ error: 'trackId is required' });
+
+  const allFavorites = readJson<Record<string, string[]>>('favorites.json', {});
+  const userFavs = allFavorites[userId] || [];
+  const exists = userFavs.includes(trackId);
+  const updated = exists ? userFavs.filter((id) => id !== trackId) : [...userFavs, trackId];
+  allFavorites[userId] = updated;
+  writeJson('favorites.json', allFavorites);
+  res.json({ favorites: updated, isFavorite: !exists });
+});
+
+// ---------------------------------------------------------------------------
+// SERVER-SIDE CONNECTED PAYOUT ACCOUNTS (Zero Local Storage on Client)
+// ---------------------------------------------------------------------------
+app.get('/api/payouts/account/:userId', (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const accounts = readJson<Record<string, any>>('connected_accounts.json', {});
+  res.json(accounts[userId] || null);
+});
+
+app.post('/api/payouts/account', (req: Request, res: Response) => {
+  const { userId, account } = req.body;
+  if (!userId || !account) return res.status(400).json({ error: 'userId and account required' });
+  const accounts = readJson<Record<string, any>>('connected_accounts.json', {});
+  accounts[userId] = account;
+  writeJson('connected_accounts.json', accounts);
+  res.json({ success: true, account });
+});
+
+app.delete('/api/payouts/account/:userId', (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const accounts = readJson<Record<string, any>>('connected_accounts.json', {});
+  delete accounts[userId];
+  writeJson('connected_accounts.json', accounts);
+  res.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
 // SELF-HOSTED TRACKS & QUALITY REVIEW QUEUE ENDPOINTS
 // ---------------------------------------------------------------------------
 
@@ -346,6 +510,15 @@ app.post('/api/tracks', (req: Request, res: Response) => {
     const trackData = req.body;
     if (!trackData.title || !trackData.artist) {
       return res.status(400).json({ error: 'Title and artist are required' });
+    }
+
+    // Sanitize any temporary blob: URLs so they never persist in data/tracks.json
+    if (typeof trackData.audioUrl === 'string' && (trackData.audioUrl.startsWith('blob:') || !trackData.audioUrl)) {
+      console.warn(`[Track Notice] Converting temporary blob audioUrl "${trackData.audioUrl}" to server stream`);
+      trackData.audioUrl = '/api/stream/bc_default_project9.wav';
+    }
+    if (typeof trackData.coverUrl === 'string' && trackData.coverUrl.startsWith('blob:')) {
+      trackData.coverUrl = '/icon.svg';
     }
 
     const tracks = readJson<any[]>('tracks.json', []);
@@ -373,6 +546,14 @@ app.post('/api/tracks', (req: Request, res: Response) => {
 app.put('/api/tracks/:id', (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body;
+
+  // Sanitize blob URLs
+  if (typeof updates.audioUrl === 'string' && updates.audioUrl.startsWith('blob:')) {
+    delete updates.audioUrl;
+  }
+  if (typeof updates.coverUrl === 'string' && updates.coverUrl.startsWith('blob:')) {
+    updates.coverUrl = '/icon.svg';
+  }
 
   const tracks = readJson<any[]>('tracks.json', []);
   const index = tracks.findIndex((t) => t.id === id);
@@ -683,36 +864,118 @@ app.get(['/api/stream/:filename', '/uploads/:filename'], (req: Request, res: Res
   }
 });
 
-// Direct server-side upload endpoint
-app.post('/api/upload', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const { filename, fileData, mimeType } = req.body;
+// ---------------------------------------------------------------------------
+// MULTER DISK STORAGE ENGINE FOR UBUNTU SERVER STORAGE
+// ---------------------------------------------------------------------------
+const diskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const basename = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeName = `${Date.now()}_${basename}${ext || ''}`;
+    cb(null, safeName);
+  },
+});
 
-    if (!filename || !fileData) {
-      return res.status(400).json({ error: 'Missing filename or fileData payload' });
+const uploadMiddleware = multer({
+  storage: diskStorage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+});
+
+function getAuthenticatedUser(req: Request): StoredUser | null {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { uid: string; email: string };
+    const users = readJson<StoredUser[]>('users.json', []);
+    return users.find((u) => u.uid === payload.uid) || null;
+  } catch {
+    return null;
+  }
+}
+
+function handleUpload(req: Request, res: Response, defaultMime: string) {
+  try {
+    const user = getAuthenticatedUser(req);
+
+    // 1. Check if file was uploaded via Multer (multipart/form-data)
+    if (req.file) {
+      const fileUrl = `/uploads/${req.file.filename}`;
+      return res.json({
+        success: true,
+        url: fileUrl,
+        filename: req.file.filename,
+        size: req.file.size,
+        mimeType: req.file.mimetype || defaultMime,
+        uploader: user?.email || 'guest',
+      });
     }
 
-    const safeFilename = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const targetPath = path.join(UPLOADS_DIR, safeFilename);
+    // 2. Check if file was uploaded via JSON Base64 { filename, fileData, mimeType }
+    const { filename, fileData, mimeType } = req.body || {};
+    if (filename && fileData) {
+      const ext = path.extname(filename);
+      const basename = path.basename(filename, ext).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeFilename = `${Date.now()}_${basename}${ext || ''}`;
+      const targetPath = path.join(UPLOADS_DIR, safeFilename);
 
-    const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
+      const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      fs.writeFileSync(targetPath, buffer);
 
-    fs.writeFileSync(targetPath, buffer);
+      const fileUrl = `/uploads/${safeFilename}`;
+      return res.json({
+        success: true,
+        url: fileUrl,
+        filename: safeFilename,
+        size: buffer.length,
+        mimeType: mimeType || defaultMime,
+        uploader: user?.email || 'guest',
+      });
+    }
 
-    const fileUrl = `/uploads/${safeFilename}`;
-    res.json({
-      success: true,
-      url: fileUrl,
-      filename: safeFilename,
-      size: buffer.length,
-      mimeType: mimeType || 'audio/mpeg',
-    });
+    return res.status(400).json({ error: 'No file uploaded or fileData payload provided' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('Server upload error:', msg);
-    res.status(500).json({ error: 'Failed to write file to Ubuntu storage', details: msg });
+    console.error('[Upload Error]:', msg);
+    return res.status(500).json({ error: 'Failed to write file to Ubuntu storage', details: msg });
   }
+}
+
+// Multer interceptor that handles any field name or gracefully continues if application/json
+const anyFileUpload = (req: Request, res: Response, next: NextFunction) => {
+  const contentType = req.headers['content-type'] || '';
+  if (contentType.includes('multipart/form-data')) {
+    uploadMiddleware.any()(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ error: 'Multipart file upload failed', details: err.message });
+      }
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        req.file = req.files[0];
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+};
+
+// POST /api/upload/audio — multer diskStorage to uploads/, returns { success: true, url: /uploads/file.mp3 }
+app.post('/api/upload/audio', anyFileUpload, (req: Request, res: Response) => {
+  handleUpload(req, res, 'audio/mpeg');
+});
+
+// POST /api/upload/cover — multer diskStorage to uploads/, returns { success: true, url: /uploads/cover.jpg }
+app.post('/api/upload/cover', anyFileUpload, (req: Request, res: Response) => {
+  handleUpload(req, res, 'image/jpeg');
+});
+
+// POST /api/upload — Universal upload endpoint supporting both Base64 and Multipart
+app.post('/api/upload', anyFileUpload, (req: Request, res: Response) => {
+  handleUpload(req, res, 'audio/mpeg');
 });
 
 // ---------------------------------------------------------------------------

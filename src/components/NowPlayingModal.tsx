@@ -17,6 +17,7 @@ import {
 import { useAudio } from '../context/AudioContext';
 import { formatTime } from '../utils/lrcParser';
 import { AudioVisualizer } from './AudioVisualizer';
+import { BCAfricaLogo, LosslessAudioVector } from './icons/VectorIcons';
 
 export const NowPlayingModal: React.FC = () => {
   const {
@@ -104,18 +105,15 @@ export const NowPlayingModal: React.FC = () => {
       {/* Top Bar */}
       <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 py-6">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg overflow-hidden bg-sky-950 p-0.5 border border-sky-600/40">
-            <img
-              src="/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg"
-              alt="BC Africa"
-              className="w-full h-full object-contain"
-            />
-          </div>
+          <BCAfricaLogo size={34} />
           <div>
-            <span className="text-xs font-mono uppercase tracking-widest text-sky-400">
-              BC Africa Music
-            </span>
-            <p className="text-sm font-semibold text-slate-200">Now Playing</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono uppercase tracking-widest text-sky-400 font-bold">
+                BC Africa Studio
+              </span>
+              <LosslessAudioVector />
+            </div>
+            <p className="text-sm font-semibold text-slate-200">Lossless Master Session</p>
           </div>
         </div>
 
@@ -133,15 +131,15 @@ export const NowPlayingModal: React.FC = () => {
         {/* Left Side: Artwork & Visualizer */}
         <div className="lg:col-span-5 flex flex-col items-center justify-center max-w-md mx-auto w-full">
           {/* Album Cover Art */}
-          <div className="relative aspect-square w-64 sm:w-80 lg:w-96 rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(2,132,199,0.3)] border border-sky-600/30 group">
+          <div className="relative aspect-square w-64 sm:w-80 lg:w-96 rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(2,132,199,0.3)] border border-sky-600/30 group bg-[#06101e]">
             <img
-              src={currentTrack.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+              src={currentTrack.coverUrl || '/icon.svg'}
               alt={currentTrack.title}
               className={`w-full h-full object-cover transition-transform duration-700 ${
                 isPlaying ? 'scale-105' : 'scale-100'
               }`}
               onError={(e) => {
-                (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                (e.target as HTMLImageElement).src = '/icon.svg';
               }}
             />
             {isPlaying && (

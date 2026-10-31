@@ -3,6 +3,7 @@ import { Play, Pause, Heart, Sliders, Trash2, Clock, Mic2 } from 'lucide-react';
 import { Track } from '../types/music';
 import { useAudio } from '../context/AudioContext';
 import { formatTime } from '../utils/lrcParser';
+import { getCountryFlagVector } from './icons/VectorIcons';
 
 interface TrackCardProps {
   track: Track;
@@ -40,22 +41,22 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index }) => {
       onClick={() => {
         if (!isCurrent) playTrack(track);
       }}
-      className={`group relative bg-[#091423] hover:bg-[#0c1a2e] border transition-all duration-200 rounded-2xl p-3.5 flex flex-col justify-between cursor-pointer ${
+      className={`group relative glass-card rounded-2xl p-3.5 flex flex-col justify-between cursor-pointer ${
         isCurrent
-          ? 'border-sky-500/80 shadow-[0_0_20px_rgba(2,132,199,0.25)]'
-          : 'border-sky-950/60 hover:border-sky-900/80 shadow-md'
+          ? 'border-sky-400/80 shadow-[0_0_24px_rgba(56,189,248,0.3)] bg-sky-950/30 ring-1 ring-sky-400/50'
+          : ''
       }`}
     >
       {/* Cover Artwork Container */}
-      <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-sky-950/60 mb-3 border border-sky-950">
+      <div className="relative aspect-square w-full rounded-xl overflow-hidden glass-card mb-3 border border-white/10">
         <img
-          src={track.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+          src={track.coverUrl || '/icon.svg'}
           alt={track.title}
           className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
             isThisPlaying ? 'brightness-105' : ''
           }`}
           onError={(e) => {
-            (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+            (e.target as HTMLImageElement).src = '/icon.svg';
           }}
         />
 
@@ -67,7 +68,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index }) => {
         >
           <button
             onClick={handlePlayClick}
-            className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-600 via-sky-500 to-sky-400 text-white flex items-center justify-center shadow-[0_0_20px_rgba(2,132,199,0.7)] hover:scale-110 active:scale-95 transition-all cursor-pointer"
+            className="w-12 h-12 rounded-full bg-[#3A8BC2] hover:bg-[#4A9FD6] text-white flex items-center justify-center shadow-[0_0_20px_rgba(74,159,214,0.6)] hover:scale-110 active:scale-95 transition-all cursor-pointer"
           >
             {isThisPlaying ? (
               <Pause className="w-6 h-6 fill-white" />
@@ -122,17 +123,20 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, index }) => {
           >
             {track.title}
           </h3>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openArtistProfile(track.ownerId, track.artist);
-            }}
-            className="text-[11px] text-slate-400 hover:text-sky-300 truncate mt-0.5 text-left transition-colors cursor-pointer block max-w-full hover:underline"
-            title={`View ${track.artist}'s profile`}
-          >
-            {track.artist}
-          </button>
+          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+            {getCountryFlagVector(track.country, 13)}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openArtistProfile(track.ownerId, track.artist);
+              }}
+              className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
+              title={`View ${track.artist}'s profile`}
+            >
+              {track.artist}
+            </button>
+          </div>
         </div>
 
         {/* Bottom meta & actions */}

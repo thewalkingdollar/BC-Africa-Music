@@ -670,7 +670,7 @@ export const SuperUserPanel: React.FC = () => {
                           </td>
 
                           <td className="py-3 px-4 text-xs text-slate-300 font-mono">{u.email}</td>
-                          <td className="py-3 px-4 text-xs text-slate-300">{u.country || 'Zambia 🇿🇲'}</td>
+                          <td className="py-3 px-4 text-xs text-slate-300">{u.country || 'Zambia'}</td>
 
                           <td className="py-3 px-4">
                             <span className="text-xs font-mono font-bold uppercase px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-400 border border-sky-800">
@@ -765,9 +765,12 @@ export const SuperUserPanel: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <img
-                            src={track.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+                            src={track.coverUrl || '/icon.svg'}
                             alt={track.title}
                             className="w-10 h-10 rounded-lg object-cover bg-slate-800"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/icon.svg';
+                            }}
                           />
                           <div>
                             <div className="font-bold text-white text-xs">{track.title}</div>
@@ -1296,12 +1299,12 @@ export const SuperUserPanel: React.FC = () => {
                   onChange={(e) => setNewUserCountry(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
                 >
-                  <option value="Zambia">🇿🇲 Zambia</option>
-                  <option value="Nigeria">🇳🇬 Nigeria</option>
-                  <option value="South Africa">🇿🇦 South Africa</option>
-                  <option value="Ghana">🇬🇭 Ghana</option>
-                  <option value="Kenya">🇰🇪 Kenya</option>
-                  <option value="International">🌐 International / Diaspora</option>
+                  <option value="Zambia">Zambia</option>
+                  <option value="Nigeria">Nigeria</option>
+                  <option value="South Africa">South Africa</option>
+                  <option value="Ghana">Ghana</option>
+                  <option value="Kenya">Kenya</option>
+                  <option value="International">International / Diaspora</option>
                 </select>
               </div>
 

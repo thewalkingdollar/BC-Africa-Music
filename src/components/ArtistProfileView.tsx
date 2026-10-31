@@ -30,6 +30,7 @@ import { formatTime } from '../utils/lrcParser';
 import { apiClient } from '../services/apiClient';
 import { TipArtistModal } from './TipArtistModal';
 import { AFRICAN_COUNTRIES } from './AuthModal';
+import { BCAfricaLogo, getCountryFlagVector } from './icons/VectorIcons';
 
 export const ArtistProfileView: React.FC = () => {
   const {
@@ -157,7 +158,7 @@ export const ArtistProfileView: React.FC = () => {
   const photoURL =
     fetchedProfile?.photoURL ||
     (isOwner ? profile?.photoURL : null) ||
-    (artistTracks.length > 0 ? artistTracks[0].coverUrl : '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg');
+    (artistTracks.length > 0 ? artistTracks[0].coverUrl : '/icon.svg');
 
   // Aggregated Statistics
   const totalPlays = useMemo(() => {
@@ -257,12 +258,8 @@ export const ArtistProfileView: React.FC = () => {
       {/* Artist Hero Banner */}
       <div className="relative rounded-3xl overflow-hidden bg-gradient-to-b from-[#0c223f] via-[#091629] to-[#060c16] border border-sky-500/25 p-6 lg:p-10 shadow-[0_15px_40px_rgba(2,132,199,0.18)]">
         {/* Subtle Watermark Art */}
-        <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-10 pointer-events-none flex items-center justify-end pr-6">
-          <img
-            src="/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg"
-            alt="BC Africa Watermark"
-            className="h-full object-contain filter invert mix-blend-screen"
-          />
+        <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-15 pointer-events-none flex items-center justify-end pr-8">
+          <BCAfricaLogo size={220} />
         </div>
 
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6 lg:gap-8">
@@ -273,7 +270,7 @@ export const ArtistProfileView: React.FC = () => {
               alt={displayName}
               className="w-full h-full object-cover"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                (e.target as HTMLImageElement).src = '/icon.svg';
               }}
             />
             {canEdit && (
@@ -297,7 +294,7 @@ export const ArtistProfileView: React.FC = () => {
 
               {country && (
                 <span className="text-xs font-medium text-slate-300 bg-sky-950/60 px-2.5 py-0.5 rounded-full border border-sky-800/50 flex items-center gap-1.5">
-                  <Globe className="w-3 h-3 text-sky-400" />
+                  {getCountryFlagVector(country, 15)}
                   <span>{country}</span>
                 </span>
               )}
@@ -526,11 +523,11 @@ export const ArtistProfileView: React.FC = () => {
 
                     <div className="relative w-11 h-11 shrink-0 rounded-xl overflow-hidden bg-sky-950 border border-sky-900/60">
                       <img
-                        src={track.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+                        src={track.coverUrl || '/icon.svg'}
                         alt={track.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                          (e.target as HTMLImageElement).src = '/icon.svg';
                         }}
                       />
                       <div

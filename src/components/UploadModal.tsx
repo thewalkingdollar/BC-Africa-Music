@@ -4,6 +4,7 @@ import { useAudio } from '../context/AudioContext';
 import { useAuth } from '../context/AuthContext';
 import { parseLRC, plainTextToLines } from '../utils/lrcParser';
 import { LyricLine } from '../types/music';
+import { apiClient } from '../services/apiClient';
 
 const PRESET_COVERS = [
   'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
@@ -122,6 +123,22 @@ export const UploadModal: React.FC = () => {
 
       const effectiveArtist = artist.trim() || profile?.artistStageName || profile?.displayName || user.displayName || 'BC Africa Artist';
 
+      let finalCoverUrl = coverUrl;
+      if (customCoverFile) {
+        const coverBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (e) => reject(e);
+          reader.readAsDataURL(customCoverFile);
+        });
+        const coverRes = await apiClient.uploadCover(
+          customCoverFile.name || `cover_${Date.now()}.jpg`,
+          coverBase64,
+          customCoverFile.type || 'image/jpeg'
+        );
+        finalCoverUrl = coverRes.url;
+      }
+
       const newTrack = await addCustomTrack(
         {
           title: title.trim(),
@@ -130,7 +147,8 @@ export const UploadModal: React.FC = () => {
           genre,
           duration: duration || 180,
           audioUrl: '',
-          coverUrl,
+          coverUrl: finalCoverUrl,
+          country: profile?.country || 'Zambia',
           lyricsRaw: lyricsText,
           lyricsSynced: syncedLines,
           uploadedAt: new Date().toISOString().split('T')[0],

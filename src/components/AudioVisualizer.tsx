@@ -55,11 +55,11 @@ export const AudioVisualizer: React.FC<VisualizerProps> = ({
         const x = i * (barWidth + gap);
         const y = h - barHeight;
 
-        // Gradient matching BC Africa logo (cyan to deep royal blue)
+        // Gradient matching BC Africa brand palette
         const gradient = ctx.createLinearGradient(0, y, 0, h);
-        gradient.addColorStop(0, '#38bdf8'); // sky light blue
-        gradient.addColorStop(0.6, '#0284c7'); // cerulean
-        gradient.addColorStop(1, '#1d4ed8'); // royal blue
+        gradient.addColorStop(0, '#5AA1D2'); // bc-light highlight
+        gradient.addColorStop(0.5, '#4A9FD6'); // bc-blue primary
+        gradient.addColorStop(1, '#2F7AB8'); // bc-steel deep accent
 
         ctx.fillStyle = gradient;
         // Rounded bar top

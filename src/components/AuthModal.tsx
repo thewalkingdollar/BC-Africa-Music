@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Mic2, Headphones, ShieldCheck, Sparkles, Check, AlertCircle, Edit3 } from 'lucide-react';
 import { useAuth, BOOTSTRAP_ADMIN_EMAIL } from '../context/AuthContext';
 import { UserRole } from '../types/music';
+import { BCAfricaLogo } from './icons/VectorIcons';
 
 export const AFRICAN_COUNTRIES = [
   'Zambia',
@@ -114,12 +115,8 @@ export const AuthModal: React.FC = () => {
 
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="w-12 h-12 rounded-xl overflow-hidden bg-sky-950/50 p-1 border border-sky-500/40 mx-auto mb-3 shadow-[0_0_20px_rgba(2,132,199,0.3)]">
-            <img
-              src="/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg"
-              alt="BC Africa Logo"
-              className="w-full h-full object-contain"
-            />
+          <div className="flex justify-center mb-3">
+            <BCAfricaLogo size={48} />
           </div>
           <h2 className="text-xl font-extrabold text-white tracking-tight">
             {authModalMode === 'signup' ? 'Join BC Africa Music' : 'Welcome Back'}

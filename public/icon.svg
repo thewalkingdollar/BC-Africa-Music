@@ -1,0 +1,39 @@
+<svg width="512" height="512" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bcAfricaGrad" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stopColor="#38bdf8" />
+      <stop offset="50%" stopColor="#0ea5e9" />
+      <stop offset="100%" stopColor="#0284c7" />
+    </linearGradient>
+    <linearGradient id="bcWaveGrad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stopColor="#06b6d4" />
+      <stop offset="50%" stopColor="#38bdf8" />
+      <stop offset="100%" stopColor="#f59e0b" />
+    </linearGradient>
+    <filter id="bcGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="100" height="100" rx="22" fill="#040d1a" stroke="#0ea5e9" stroke-width="2" />
+
+  <!-- African Continent Silhouette -->
+  <path
+    d="M32 24 C38 21, 56 22, 64 27 C72 32, 74 38, 70 44 C66 48, 68 53, 64 61 C60 69, 53 77, 49 82 C46 80, 43 75, 43 68 C41 62, 33 55, 30 50 C26 44, 25 35, 32 24 Z"
+    fill="url(#bcAfricaGrad)"
+    opacity="0.28"
+  />
+
+  <!-- Equalizer Waveform Bars -->
+  <rect x="26" y="44" width="4" height="14" rx="2" fill="url(#bcWaveGrad)" />
+  <rect x="34" y="36" width="4.5" height="30" rx="2.25" fill="#38bdf8" />
+  <rect x="43" y="26" width="5" height="48" rx="2.5" fill="#0ea5e9" filter="url(#bcGlow)" />
+  <rect x="52" y="32" width="4.5" height="38" rx="2.25" fill="#38bdf8" />
+  <rect x="61" y="40" width="4" height="22" rx="2" fill="url(#bcWaveGrad)" />
+  <rect x="69" y="46" width="3.5" height="10" rx="1.75" fill="#0284c7" />
+
+  <circle cx="45.5" cy="23" r="3" fill="#f59e0b" filter="url(#bcGlow)" />
+  <circle cx="50" cy="50" r="44" stroke="rgba(56,189,248,0.25)" stroke-width="1.2" stroke-dasharray="4 3" />
+</svg>

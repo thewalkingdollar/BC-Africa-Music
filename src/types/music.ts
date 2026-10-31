@@ -26,6 +26,7 @@ export interface Track {
   ownerId?: string;
   ownerEmail?: string;
   ownerName?: string;
+  country?: string;
   // Quality & Editorial Review workflow
   status?: TrackStatus;
   reviewerNotes?: string;

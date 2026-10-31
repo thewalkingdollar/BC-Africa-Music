@@ -7,40 +7,53 @@ import {
   PayoutRequest,
 } from '../types/music';
 
-const TOKEN_KEY = 'bc_africa_auth_token';
-const USER_CACHE_KEY = 'bc_africa_cached_user';
+/**
+ * 100% Server-Authoritative API Client.
+ * ZERO local storage / IndexedDB used — all session, credentials, tracks,
+ * favorites, and connected accounts are strictly managed by the Ubuntu Node.js server.
+ */
 
 export interface AuthResponse {
   token: string;
   user: UserProfile;
 }
 
+export interface ConnectedAccountData {
+  type: 'mobile_money' | 'bank_account';
+  provider: string;
+  accountName: string;
+  accountNumber: string;
+  country: string;
+  savedAt: string;
+}
+
 class ApiClient {
-  private token: string | null = null;
+  private inMemoryToken: string | null = null;
+  private inMemoryUser: UserProfile | null = null;
 
-  constructor() {
-    if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem(TOKEN_KEY);
-    }
-  }
+  public setSession(token: string | null, user: UserProfile | null) {
+    this.inMemoryToken = token;
+    this.inMemoryUser = user;
 
-  public setToken(token: string | null) {
-    this.token = token;
-    if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem(TOKEN_KEY, token);
-      } else {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_CACHE_KEY);
-      }
+    // Persist session state directly to the server (not client localStorage)
+    if (token && user) {
+      this.request('/api/auth/session', {
+        method: 'POST',
+        body: JSON.stringify({ user, token }),
+      }).catch((e) => console.debug('Sync session note:', e));
+    } else {
+      this.request('/api/auth/session', {
+        method: 'DELETE',
+      }).catch((e) => console.debug('Clear session note:', e));
     }
   }
 
   public getToken(): string | null {
-    if (!this.token && typeof window !== 'undefined') {
-      this.token = localStorage.getItem(TOKEN_KEY);
-    }
-    return this.token;
+    return this.inMemoryToken;
+  }
+
+  public getUser(): UserProfile | null {
+    return this.inMemoryUser;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -49,9 +62,8 @@ class ApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    const token = this.getToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    if (this.inMemoryToken) {
+      headers['Authorization'] = `Bearer ${this.inMemoryToken}`;
     }
 
     const response = await fetch(endpoint, {
@@ -65,7 +77,7 @@ class ApiClient {
         const errorData = await response.json();
         if (errorData.error) errMsg = errorData.error;
       } catch {
-        // ignore parse error
+        // ignore JSON parse error
       }
       throw new Error(errMsg);
     }
@@ -73,8 +85,25 @@ class ApiClient {
     return response.json() as Promise<T>;
   }
 
-  // AUTH METHODS
+  // -------------------------------------------------------------------------
+  // AUTHENTICATION (Server-Managed Sessions)
+  // -------------------------------------------------------------------------
   public auth = {
+    // Check server for current active session
+    getSession: async (): Promise<UserProfile | null> => {
+      try {
+        const res = await this.request<{ user: UserProfile | null; token: string | null }>('/api/auth/session');
+        if (res && res.user && res.token) {
+          this.inMemoryToken = res.token;
+          this.inMemoryUser = res.user;
+          return res.user;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+
     register: async (data: {
       email: string;
       password: string;
@@ -87,8 +116,7 @@ class ApiClient {
         method: 'POST',
         body: JSON.stringify(data),
       });
-      this.setToken(res.token);
-      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.user));
+      this.setSession(res.token, res.user);
       return res;
     },
 
@@ -97,22 +125,20 @@ class ApiClient {
         method: 'POST',
         body: JSON.stringify({ email, password: pass }),
       });
-      this.setToken(res.token);
-      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.user));
+      this.setSession(res.token, res.user);
       return res;
     },
 
     me: async (): Promise<UserProfile | null> => {
-      const token = this.getToken();
-      if (!token) return null;
+      if (!this.inMemoryToken) {
+        return await this.auth.getSession();
+      }
       try {
         const res = await this.request<{ user: UserProfile }>('/api/auth/me');
-        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.user));
+        this.inMemoryUser = res.user;
         return res.user;
       } catch {
-        // Fallback to cached profile if server temporarily unreachable
-        const cached = localStorage.getItem(USER_CACHE_KEY);
-        return cached ? JSON.parse(cached) : null;
+        return await this.auth.getSession();
       }
     },
 
@@ -121,7 +147,7 @@ class ApiClient {
         method: 'PUT',
         body: JSON.stringify(data),
       });
-      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.user));
+      this.inMemoryUser = res.user;
       return res.user;
     },
 
@@ -129,8 +155,7 @@ class ApiClient {
       try {
         return await this.request<UserProfile[]>('/api/auth/users');
       } catch {
-        const cached = localStorage.getItem(USER_CACHE_KEY);
-        return cached ? [JSON.parse(cached)] : [];
+        return this.inMemoryUser ? [this.inMemoryUser] : [];
       }
     },
 
@@ -142,15 +167,20 @@ class ApiClient {
           body: JSON.stringify({ role, artistStageName: stageName }),
         }
       );
+      if (this.inMemoryUser && this.inMemoryUser.uid === uid) {
+        this.inMemoryUser = res.user;
+      }
       return res.user;
     },
 
     logout: () => {
-      this.setToken(null);
+      this.setSession(null, null);
     },
   };
 
-  // TRACKS METHODS
+  // -------------------------------------------------------------------------
+  // TRACKS (Server Database & File System)
+  // -------------------------------------------------------------------------
   public tracks = {
     getAll: async (): Promise<Track[]> => {
       try {
@@ -182,7 +212,32 @@ class ApiClient {
     },
   };
 
-  // PLAYS & TRENDING
+  // -------------------------------------------------------------------------
+  // USER FAVORITES (Stored on Server)
+  // -------------------------------------------------------------------------
+  public favorites = {
+    get: async (userId: string): Promise<string[]> => {
+      try {
+        return await this.request<string[]>(`/api/favorites/${encodeURIComponent(userId)}`);
+      } catch {
+        return [];
+      }
+    },
+
+    toggle: async (userId: string, trackId: string): Promise<{ favorites: string[]; isFavorite: boolean }> => {
+      return await this.request<{ favorites: string[]; isFavorite: boolean }>(
+        `/api/favorites/${encodeURIComponent(userId)}/toggle`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ trackId }),
+        }
+      );
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // PLAYS & TRENDING (Server Engine)
+  // -------------------------------------------------------------------------
   public plays = {
     record: async (payload: {
       trackId: string;
@@ -210,7 +265,9 @@ class ApiClient {
     },
   };
 
-  // TIPS & PATRONAGE
+  // -------------------------------------------------------------------------
+  // TIPS & PATRONAGE (Server Database)
+  // -------------------------------------------------------------------------
   public tips = {
     getAll: async (artistId?: string): Promise<ArtistTip[]> => {
       const qs = artistId ? `?artistId=${encodeURIComponent(artistId)}` : '';
@@ -230,7 +287,9 @@ class ApiClient {
     },
   };
 
-  // PAYOUTS
+  // -------------------------------------------------------------------------
+  // PAYOUTS & CONNECTED ACCOUNTS (Server Database)
+  // -------------------------------------------------------------------------
   public payouts = {
     getAll: async (artistId?: string): Promise<PayoutRequest[]> => {
       const qs = artistId ? `?artistId=${encodeURIComponent(artistId)}` : '';
@@ -268,9 +327,42 @@ class ApiClient {
         method: 'DELETE',
       });
     },
+
+    // Connected Payout Account on Server
+    getAccount: async (userId: string): Promise<ConnectedAccountData | null> => {
+      try {
+        return await this.request<ConnectedAccountData | null>(
+          `/api/payouts/account/${encodeURIComponent(userId)}`
+        );
+      } catch {
+        return null;
+      }
+    },
+
+    saveAccount: async (userId: string, account: ConnectedAccountData): Promise<ConnectedAccountData> => {
+      const res = await this.request<{ success: boolean; account: ConnectedAccountData }>(
+        '/api/payouts/account',
+        {
+          method: 'POST',
+          body: JSON.stringify({ userId, account }),
+        }
+      );
+      return res.account;
+    },
+
+    deleteAccount: async (userId: string): Promise<void> => {
+      await this.request<{ success: boolean }>(
+        `/api/payouts/account/${encodeURIComponent(userId)}`,
+        {
+          method: 'DELETE',
+        }
+      );
+    },
   };
 
-  // PLATFORM SETTINGS
+  // -------------------------------------------------------------------------
+  // PLATFORM SETTINGS (Server Database)
+  // -------------------------------------------------------------------------
   public settings = {
     get: async (): Promise<PlatformSettings> => {
       return await this.request<PlatformSettings>('/api/settings');
@@ -284,13 +376,37 @@ class ApiClient {
     },
   };
 
+  // -------------------------------------------------------------------------
   // DIRECT FILE UPLOAD TO UBUNTU SERVER STORAGE
+  // -------------------------------------------------------------------------
   public upload = async (
     filename: string,
     fileData: string,
     mimeType?: string
   ): Promise<{ url: string; filename: string }> => {
     return await this.request<{ url: string; filename: string }>('/api/upload', {
+      method: 'POST',
+      body: JSON.stringify({ filename, fileData, mimeType }),
+    });
+  };
+
+  public uploadAudio = async (
+    filename: string,
+    fileData: string,
+    mimeType?: string
+  ): Promise<{ url: string; filename: string }> => {
+    return await this.request<{ url: string; filename: string }>('/api/upload/audio', {
+      method: 'POST',
+      body: JSON.stringify({ filename, fileData, mimeType }),
+    });
+  };
+
+  public uploadCover = async (
+    filename: string,
+    fileData: string,
+    mimeType?: string
+  ): Promise<{ url: string; filename: string }> => {
+    return await this.request<{ url: string; filename: string }>('/api/upload/cover', {
       method: 'POST',
       body: JSON.stringify({ filename, fileData, mimeType }),
     });

@@ -2,13 +2,12 @@ module.exports = {
   apps: [{
     name: "bc-africa-music",
     cwd: "/var/www/bc-africa-music",
-    script: "/home/bcafrica/.bun/bin/bun",
-    args: "run start",
+    script: "tsx",
+    args: "server.ts",
     env: {
       PORT: 3000,
-      NODE_ENV: "development",
-      BUN_INSTALL: "/home/bcafrica/.bun",
-      PATH: "/home/bcafrica/.bun/bin:/usr/bin:/bin"
+      NODE_ENV: "production",
+      JWT_SECRET: process.env.JWT_SECRET || "bc-africa-music-production-jwt-secret-key-2026"
     }
   }]
 }

@@ -20,6 +20,7 @@ import { useAudio } from '../context/AudioContext';
 import { formatTime } from '../utils/lrcParser';
 import { AudioVisualizer } from './AudioVisualizer';
 import { TipArtistModal } from './TipArtistModal';
+import { LosslessAudioVector, EqualizerWaveVector, getCountryFlagVector } from './icons/VectorIcons';
 
 export const BottomPlayer: React.FC = () => {
   const {
@@ -71,23 +72,23 @@ export const BottomPlayer: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#070e17]/95 backdrop-blur-xl border-t border-sky-950/70 px-3 lg:px-6 py-2.5 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+    <div className="fixed bottom-0 left-0 right-0 z-50 glass-panel-elevated border-t border-white/20 px-3 lg:px-6 py-2.5 shadow-[0_-8px_32px_rgba(0,0,0,0.37)]">
       <div className="max-w-7xl mx-auto flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-4">
           {/* Left Zone: Track Info & Cover */}
           <div className="flex items-center gap-3 min-w-[200px] max-w-[280px] lg:max-w-[340px] shrink-0">
             <div
               onClick={() => setIsNowPlayingOpen(true)}
-              className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 cursor-pointer group shadow-[0_4px_12px_rgba(0,0,0,0.5)] border border-sky-900/40"
+              className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 cursor-pointer group shadow-[0_4px_16px_rgba(0,0,0,0.3)] border border-white/20 glass-card"
             >
               <img
-                src={currentTrack.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+                src={currentTrack.coverUrl || '/icon.svg'}
                 alt={currentTrack.title}
                 className={`w-full h-full object-cover transition-transform group-hover:scale-105 ${
                   isPlaying ? 'brightness-105' : 'brightness-90'
                 }`}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                  (e.target as HTMLImageElement).src = '/icon.svg';
                 }}
               />
               <div className="absolute inset-0 bg-sky-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -96,7 +97,7 @@ export const BottomPlayer: React.FC = () => {
             </div>
 
             <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span
                   onClick={() => setIsNowPlayingOpen(true)}
                   className="text-xs lg:text-sm font-semibold text-white truncate cursor-pointer hover:text-sky-300 transition-colors"
@@ -104,20 +105,24 @@ export const BottomPlayer: React.FC = () => {
                 >
                   {currentTrack.title}
                 </span>
+                <LosslessAudioVector className="scale-75 origin-left" />
                 {currentTrack.lyricsSynced?.length > 0 && (
-                  <span className="text-[9px] text-sky-400 bg-sky-950/80 px-1.5 py-0.5 rounded border border-sky-800/40 shrink-0 font-medium">
+                  <span className="text-[8px] text-sky-400 bg-sky-950/80 px-1 py-0.2 rounded border border-sky-800/40 shrink-0 font-medium">
                     SYNCED
                   </span>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => openArtistProfile(currentTrack.ownerId, currentTrack.artist)}
-                className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
-                title={`View ${currentTrack.artist}'s profile`}
-              >
-                {currentTrack.artist}
-              </button>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {getCountryFlagVector(currentTrack.country, 13)}
+                <button
+                  type="button"
+                  onClick={() => openArtistProfile(currentTrack.ownerId, currentTrack.artist)}
+                  className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
+                  title={`View ${currentTrack.artist}'s profile`}
+                >
+                  {currentTrack.artist}
+                </button>
+              </div>
             </div>
 
             <button
@@ -164,7 +169,7 @@ export const BottomPlayer: React.FC = () => {
 
               <button
                 onClick={togglePlay}
-                className="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-600 via-sky-500 to-sky-400 text-white flex items-center justify-center shadow-[0_0_20px_rgba(2,132,199,0.5)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                className="w-10 h-10 rounded-full bg-[#3A8BC2] hover:bg-[#4A9FD6] text-white flex items-center justify-center shadow-[0_0_20px_rgba(74,159,214,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
@@ -185,7 +190,7 @@ export const BottomPlayer: React.FC = () => {
               <button
                 onClick={toggleLoop}
                 className={`p-1.5 rounded-md text-xs transition-colors cursor-pointer ${
-                  isLooping ? 'text-sky-400 bg-sky-950/60' : 'text-slate-400 hover:text-white'
+                  isLooping ? 'text-[#4A9FD6] bg-[#0A1426]' : 'text-slate-400 hover:text-white'
                 }`}
                 title={isLooping ? 'Repeat track on' : 'Repeat off'}
               >
@@ -194,7 +199,8 @@ export const BottomPlayer: React.FC = () => {
             </div>
 
             {/* Seek Bar with Time labels */}
-            <div className="w-full flex items-center gap-2.5 mt-1">
+            <div className="w-full flex items-center gap-2 mt-1">
+              <EqualizerWaveVector isPlaying={isPlaying} className="hidden sm:flex shrink-0 mr-1" />
               <span className="text-[11px] font-mono text-slate-400 tabular-nums w-10 text-right">
                 {formatTime(currentTime)}
               </span>
@@ -212,14 +218,14 @@ export const BottomPlayer: React.FC = () => {
                 {/* Background track */}
                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden group-hover:h-1.5 transition-all">
                   <div
-                    className="h-full bg-gradient-to-r from-sky-500 to-sky-400 rounded-full relative"
+                    className="h-full bg-gradient-to-r from-[#5AA1D2] to-[#4A9FD6] rounded-full relative"
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
 
                 {/* Scrubber thumb */}
                 <div
-                  className="absolute w-3 h-3 rounded-full bg-white shadow-[0_0_8px_rgba(56,189,248,0.8)] opacity-0 group-hover:opacity-100 transition-opacity -translate-x-1/2 pointer-events-none"
+                  className="absolute w-3 h-3 rounded-full bg-white shadow-[0_0_8px_rgba(74,159,214,0.8)] opacity-0 group-hover:opacity-100 transition-opacity -translate-x-1/2 pointer-events-none"
                   style={{ left: `${progressPercent}%` }}
                 />
 

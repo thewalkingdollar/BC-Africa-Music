@@ -3,6 +3,7 @@ import { Play, Pause, Heart, Clock, Sliders, Trash2, Mic2 } from 'lucide-react';
 import { Track } from '../types/music';
 import { useAudio } from '../context/AudioContext';
 import { formatTime } from '../utils/lrcParser';
+import { getCountryFlagVector } from './icons/VectorIcons';
 
 interface TrackTableProps {
   tracks: Track[];
@@ -84,11 +85,11 @@ export const TrackTable: React.FC<TrackTableProps> = ({ tracks }) => {
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg overflow-hidden bg-sky-950/60 shrink-0 border border-sky-900/40">
                       <img
-                        src={track.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+                        src={track.coverUrl || '/icon.svg'}
                         alt={track.title}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                          (e.target as HTMLImageElement).src = '/icon.svg';
                         }}
                       />
                     </div>
@@ -112,17 +113,20 @@ export const TrackTable: React.FC<TrackTableProps> = ({ tracks }) => {
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openArtistProfile(track.ownerId, track.artist);
-                        }}
-                        className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
-                        title={`View ${track.artist}'s profile`}
-                      >
-                        {track.artist}
-                      </button>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {getCountryFlagVector(track.country, 12)}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openArtistProfile(track.ownerId, track.artist);
+                          }}
+                          className="text-[11px] text-slate-400 hover:text-sky-300 truncate text-left transition-colors cursor-pointer hover:underline"
+                          title={`View ${track.artist}'s profile`}
+                        >
+                          {track.artist}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </td>

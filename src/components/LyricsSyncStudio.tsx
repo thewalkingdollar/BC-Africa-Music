@@ -278,11 +278,11 @@ export const LyricsSyncStudio: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-xl overflow-hidden bg-sky-950 border border-sky-800/60 shrink-0 shadow-md">
               <img
-                src={selectedTrack.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+                src={selectedTrack.coverUrl || '/icon.svg'}
                 alt={selectedTrack.title}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                  (e.target as HTMLImageElement).src = '/icon.svg';
                 }}
               />
             </div>

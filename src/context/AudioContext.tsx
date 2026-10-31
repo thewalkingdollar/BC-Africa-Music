@@ -2,14 +2,6 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { LyricLine, Track, ViewMode, TrendingTrack, TrackStatus } from '../types/music';
 import { INITIAL_TRACKS } from '../data/defaultTracks';
 import { generateAfricanTrackAudio } from '../utils/audioSynthesizer';
-import {
-  getCustomTracks,
-  saveTrackMetadata,
-  deleteTrackMetadata,
-  saveAudioBlob,
-  getAudioBlob,
-  deleteAudioBlob,
-} from '../utils/indexedDB';
 import { BOOTSTRAP_ADMIN_EMAIL, useAuth } from './AuthContext';
 import { usePlatform } from './PlatformContext';
 import { apiClient } from '../services/apiClient';
@@ -50,7 +42,7 @@ interface AudioContextType {
   playTrack: (track: Track) => Promise<void>;
   recordTrackPlay: (track: Track) => Promise<void>;
   togglePlay: () => Promise<void>;
-  pause: () => void;
+  pause: () => Promise<void> | void;
   seek: (seconds: number) => void;
   skipNext: () => void;
   skipPrev: () => void;
@@ -60,7 +52,7 @@ interface AudioContextType {
   toggleLoop: () => void;
   toggleShuffle: () => void;
   toggleFavorite: (trackId: string) => void;
-  addCustomTrack: (trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>, audioBlob: Blob) => Promise<Track>;
+  addCustomTrack: (trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>, audioFile: Blob | File) => Promise<Track>;
   updateTrackLyrics: (trackId: string, synced: LyricLine[], rawLRC: string) => Promise<void>;
   updateTrackStatus: (trackId: string, status: TrackStatus, notes?: string) => Promise<void>;
   updateTrackMetadata: (trackId: string, meta: Partial<Track>) => Promise<void>;
@@ -87,6 +79,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isLooping, setIsLooping] = useState<boolean>(false);
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
   const [plays24hMap, setPlays24hMap] = useState<Record<string, number>>({});
+  const [favoriteTrackIds, setFavoriteTrackIds] = useState<string[]>([]);
 
   // UI state
   const [activeView, setActiveView] = useState<ViewMode>('discover');
@@ -106,60 +99,79 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const [analyserReady, setAnalyserReady] = useState<AnalyserNode | null>(null);
 
+  // Playback coordination refs to avoid DOMException on interrupted play()
+  const playPromiseRef = useRef<Promise<void> | null>(null);
+  const activeRequestIdRef = useRef<number>(0);
+
+  // Safely await pending play promise before changing src, loading, or pausing
+  const waitForPendingPlay = useCallback(async () => {
+    if (playPromiseRef.current) {
+      try {
+        await playPromiseRef.current;
+      } catch {
+        // Interruption rejections from previously aborted requests are safely swallowed
+      }
+    }
+  }, []);
+
+  const pause = useCallback(async () => {
+    setIsPlaying(false);
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'paused';
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    await waitForPendingPlay();
+    try {
+      audio.pause();
+    } catch {
+      // Audio already paused or aborted
+    }
+  }, [waitForPendingPlay]);
+
   // Pause music if in-stream ad starts playing
   useEffect(() => {
-    if (isAdOverlayOpen && isPlaying && audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
+    if (isAdOverlayOpen && isPlaying) {
+      pause();
     }
-  }, [isAdOverlayOpen, isPlaying]);
+  }, [isAdOverlayOpen, isPlaying, pause]);
 
-  // Load custom tracks from IndexedDB & Self-Hosted Ubuntu server
+  // Load favorites from server whenever user logs in or changes
+  useEffect(() => {
+    let mounted = true;
+    if (!user) {
+      setFavoriteTrackIds([]);
+      return;
+    }
+
+    async function loadFavorites() {
+      if (!user) return;
+      try {
+        const favs = await apiClient.favorites.get(user.uid);
+        if (mounted && Array.isArray(favs)) {
+          setFavoriteTrackIds(favs);
+        }
+      } catch (err) {
+        console.warn('Load favorites note:', err);
+      }
+    }
+
+    loadFavorites();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  // 100% Server-Authoritative: Load tracks & 24h play stats from Ubuntu Express server
   useEffect(() => {
     let mounted = true;
 
-    async function loadInitialData() {
-      // 1. Load local IndexedDB custom uploaded blobs
-      try {
-        const storedTracks = await getCustomTracks();
-        if (mounted && storedTracks && storedTracks.length > 0) {
-          const restoredTracks: Track[] = await Promise.all(
-            storedTracks.map(async (t) => {
-              if (t.audioBlobKey) {
-                const blob = await getAudioBlob(t.audioBlobKey);
-                if (blob) {
-                  return { ...t, audioUrl: URL.createObjectURL(blob) };
-                }
-              }
-              return t;
-            })
-          );
-          setTracks((prev) => {
-            const localMap = new Map(prev.map((t) => [t.id, t]));
-            restoredTracks.forEach((t) => localMap.set(t.id, t));
-            return Array.from(localMap.values());
-          });
-        }
-      } catch (e) {
-        console.error('Error loading stored local tracks:', e);
-      }
-
-      // 2. Fetch tracks and 24h play stats from self-hosted server
+    async function loadServerData() {
       try {
         const serverTracks = await apiClient.tracks.getAll();
         if (mounted && serverTracks && serverTracks.length > 0) {
-          setTracks((prev) => {
-            const localMap = new Map(prev.map((t) => [t.id, t]));
-            serverTracks.forEach((st) => {
-              const existing = localMap.get(st.id);
-              if (existing && existing.audioUrl?.startsWith('blob:')) {
-                localMap.set(st.id, { ...st, audioUrl: existing.audioUrl, audioBlobKey: existing.audioBlobKey });
-              } else {
-                localMap.set(st.id, st);
-              }
-            });
-            return Array.from(localMap.values());
-          });
+          setTracks(serverTracks);
         }
 
         const recentPlays = await apiClient.plays.getRecent24h();
@@ -167,29 +179,18 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setPlays24hMap(recentPlays);
         }
       } catch (err) {
-        console.warn('Notice loading tracks from self-hosted server:', err);
+        console.warn('Notice loading tracks from server:', err);
       }
     }
 
-    loadInitialData();
+    loadServerData();
 
-    // Periodic synchronization with self-hosted server
+    // Periodic synchronization with server
     const syncInterval = setInterval(async () => {
       try {
         const serverTracks = await apiClient.tracks.getAll();
         if (mounted && serverTracks && serverTracks.length > 0) {
-          setTracks((prev) => {
-            const localMap = new Map(prev.map((t) => [t.id, t]));
-            serverTracks.forEach((st) => {
-              const existing = localMap.get(st.id);
-              if (existing && existing.audioUrl?.startsWith('blob:')) {
-                localMap.set(st.id, { ...st, audioUrl: existing.audioUrl, audioBlobKey: existing.audioBlobKey });
-              } else {
-                localMap.set(st.id, st);
-              }
-            });
-            return Array.from(localMap.values());
-          });
+          setTracks(serverTracks);
         }
 
         const recentPlays = await apiClient.plays.getRecent24h();
@@ -197,7 +198,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setPlays24hMap(recentPlays);
         }
       } catch {
-        // quiet fallback
+        // silent fallback
       }
     }, 6000);
 
@@ -207,15 +208,38 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Initialize Audio Element
+  // Update track objects with favorite status from server
+  const tracksWithFavorites = useMemo(() => {
+    return tracks.map((t) => ({
+      ...t,
+      isFavorite: favoriteTrackIds.includes(t.id),
+    }));
+  }, [tracks, favoriteTrackIds]);
+
+  // Initialize Audio Element with Background Playback & Media Session Support
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = 'metadata';
+    audio.preload = 'auto';
     audio.crossOrigin = 'anonymous';
+    // Essential for mobile browsers & iOS Safari to allow continuous background audio
+    (audio as any).playsInline = true;
     audioRef.current = audio;
 
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+
+      // Keep OS Media Session position in sync for lock screen scrubbers
+      if ('mediaSession' in navigator && audio.duration && isFinite(audio.duration)) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: audio.duration,
+            playbackRate: audio.playbackRate,
+            position: Math.min(audio.currentTime, audio.duration),
+          });
+        } catch {
+          // ignore position state unsupported details
+        }
+      }
     };
 
     const handleDurationChange = () => {
@@ -227,14 +251,31 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const handleEnded = () => {
       if (isLooping) {
         audio.currentTime = 0;
-        audio.play().catch(() => {});
+        const p = audio.play();
+        playPromiseRef.current = p;
+        p.catch(() => {}).finally(() => {
+          if (playPromiseRef.current === p) {
+            playPromiseRef.current = null;
+          }
+        });
       } else {
         skipNext();
       }
     };
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => {
+      setIsPlaying(true);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+
+    const handlePause = () => {
+      setIsPlaying(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('durationchange', handleDurationChange);
@@ -243,7 +284,25 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('pause', handlePause);
 
     return () => {
-      audio.pause();
+      if (playPromiseRef.current) {
+        playPromiseRef.current
+          .then(() => {
+            try {
+              audio.pause();
+              audio.src = '';
+            } catch {
+              // ignore
+            }
+          })
+          .catch(() => {});
+      } else {
+        try {
+          audio.pause();
+          audio.src = '';
+        } catch {
+          // ignore
+        }
+      }
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('durationchange', handleDurationChange);
       audio.removeEventListener('ended', handleEnded);
@@ -251,6 +310,118 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       audio.removeEventListener('pause', handlePause);
     };
   }, [isLooping]);
+
+  // Configure Media Session API Action Handlers for Background OS Playback Controls
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    try {
+      navigator.mediaSession.setActionHandler('play', async () => {
+        if (audioRef.current && !isPlaying) {
+          try {
+            await waitForPendingPlay();
+            const p = audioRef.current.play();
+            playPromiseRef.current = p;
+            await p;
+            setIsPlaying(true);
+          } catch {
+            // safely ignore interrupted / gesture restrictions
+          } finally {
+            playPromiseRef.current = null;
+          }
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        pause();
+      });
+
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        skipPrev();
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        skipNext();
+      });
+
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && audioRef.current) {
+          seek(details.seekTime);
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const offset = details.seekOffset || 10;
+        if (audioRef.current) {
+          seek(Math.max(0, audioRef.current.currentTime - offset));
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const offset = details.seekOffset || 10;
+        if (audioRef.current) {
+          seek(Math.min(audioRef.current.duration || 9999, audioRef.current.currentTime + offset));
+        }
+      });
+    } catch (e) {
+      console.debug('MediaSession handlers setup notice:', e);
+    }
+  }, [isPlaying]);
+
+  // Sync Media Session Metadata whenever current track changes
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentTrack) return;
+
+    try {
+      const rawCover = currentTrack.coverUrl || '/icon.svg';
+      const absoluteCover = rawCover.startsWith('http')
+        ? rawCover
+        : `${window.location.origin}${rawCover.startsWith('/') ? '' : '/'}${rawCover}`;
+
+      const isSvg = absoluteCover.toLowerCase().includes('.svg');
+      const isPng = absoluteCover.toLowerCase().includes('.png');
+      const mimeType = isSvg ? 'image/svg+xml' : isPng ? 'image/png' : 'image/jpeg';
+
+      const artworkList = [
+        {
+          src: absoluteCover,
+          sizes: '96x96',
+          type: mimeType,
+        },
+        {
+          src: absoluteCover,
+          sizes: '128x128',
+          type: mimeType,
+        },
+        {
+          src: absoluteCover,
+          sizes: '192x192',
+          type: mimeType,
+        },
+        {
+          src: absoluteCover,
+          sizes: '256x256',
+          type: mimeType,
+        },
+        {
+          src: absoluteCover,
+          sizes: '512x512',
+          type: mimeType,
+        },
+      ];
+
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: currentTrack.album || 'BC Africa Music',
+        artwork: artworkList,
+      });
+
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch (e) {
+      console.debug('MediaSession metadata notice:', e);
+    }
+  }, [currentTrack, isPlaying]);
 
   // Lazy Web Audio API init for Visualizer
   const setupWebAudio = useCallback(() => {
@@ -290,15 +461,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return track.audioUrl;
     }
 
-    if (track.audioBlobKey) {
-      const blob = await getAudioBlob(track.audioBlobKey);
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        audioUrlCache.set(track.id, url);
-        return url;
-      }
-    }
-
     if (audioUrlCache.has(track.id)) {
       return audioUrlCache.get(track.id)!;
     }
@@ -334,8 +496,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Filter approved tracks for listeners
   const approvedTracks = useMemo(() => {
-    return tracks.filter((t) => !t.status || t.status === 'approved');
-  }, [tracks]);
+    return tracksWithFavorites.filter((t) => !t.status || t.status === 'approved');
+  }, [tracksWithFavorites]);
 
   const playTrack = useCallback(
     async (track: Track) => {
@@ -343,9 +505,32 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const audio = audioRef.current;
       if (!audio) return;
 
+      const currentRequestId = ++activeRequestIdRef.current;
+
       try {
         const url = await resolveAudioUrl(track);
-        if (audio.src !== url) {
+
+        // If another play request began while resolving audio URL, discard
+        if (currentRequestId !== activeRequestIdRef.current) {
+          return;
+        }
+
+        // Safely wait for any prior play() promise to settle before loading new src
+        await waitForPendingPlay();
+        if (currentRequestId !== activeRequestIdRef.current) {
+          return;
+        }
+
+        // Compare normalized URLs to prevent unnecessary reloads
+        const currentSrc = audio.src;
+        let targetSrc = url;
+        try {
+          targetSrc = new URL(url, window.location.href).href;
+        } catch {
+          targetSrc = url;
+        }
+
+        if (currentSrc !== targetSrc) {
           audio.src = url;
           audio.load();
         }
@@ -353,10 +538,21 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         audio.playbackRate = playbackRate;
         audio.volume = isMuted ? 0 : volume;
 
-        await audio.play();
+        // Eagerly update UI state
         setCurrentTrack(track);
-        setIsPlaying(true);
         setDuration(track.duration || 0);
+
+        const playPromise = audio.play();
+        playPromiseRef.current = playPromise;
+
+        await playPromise;
+
+        // If another play request superseded this one while play was resolving, discard
+        if (currentRequestId !== activeRequestIdRef.current) {
+          return;
+        }
+
+        setIsPlaying(true);
 
         // Record play event & notify platform in-stream advert engine
         recordTrackPlay(track);
@@ -366,11 +562,28 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setTracks((prev) =>
           prev.map((t) => (t.id === track.id ? { ...t, plays: (t.plays || 0) + 1 } : t))
         );
-      } catch (err) {
-        console.error('Audio play error:', err);
+      } catch (err: any) {
+        // Standard browser abort / interrupt or autoplay policy rejection
+        const isInterrupted =
+          err?.name === 'AbortError' ||
+          err?.name === 'NotAllowedError' ||
+          err?.code === 20 ||
+          (typeof err?.message === 'string' &&
+            (err.message.includes('interrupted by a new load request') ||
+              err.message.includes('interrupted by a call to pause') ||
+              err.message.includes('play() request was interrupted') ||
+              err.message.includes("user didn't interact")));
+
+        if (!isInterrupted) {
+          console.error('Audio play error:', err);
+        }
+      } finally {
+        if (currentRequestId === activeRequestIdRef.current) {
+          playPromiseRef.current = null;
+        }
       }
     },
-    [setupWebAudio, resolveAudioUrl, playbackRate, isMuted, volume, recordTrackPlay, notifyTrackPlayed]
+    [setupWebAudio, resolveAudioUrl, playbackRate, isMuted, volume, recordTrackPlay, notifyTrackPlayed, waitForPendingPlay]
   );
 
   const togglePlay = useCallback(async () => {
@@ -379,32 +592,47 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!audio) return;
 
     if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
+      await pause();
     } else {
-      if (!currentTrack && tracks.length > 0) {
-        await playTrack(approvedTracks[0] || tracks[0]);
+      if (!currentTrack && tracksWithFavorites.length > 0) {
+        await playTrack(approvedTracks[0] || tracksWithFavorites[0]);
       } else if (currentTrack) {
         if (!audio.src || audio.src === window.location.href) {
           await playTrack(currentTrack);
         } else {
+          const resumeRequestId = ++activeRequestIdRef.current;
           try {
-            await audio.play();
-            setIsPlaying(true);
-          } catch (e) {
-            console.error('Playback resume error:', e);
+            await waitForPendingPlay();
+            if (resumeRequestId !== activeRequestIdRef.current) return;
+
+            const playPromise = audio.play();
+            playPromiseRef.current = playPromise;
+            await playPromise;
+
+            if (resumeRequestId === activeRequestIdRef.current) {
+              setIsPlaying(true);
+            }
+          } catch (err: any) {
+            const isInterrupted =
+              err?.name === 'AbortError' ||
+              err?.name === 'NotAllowedError' ||
+              err?.code === 20 ||
+              (typeof err?.message === 'string' &&
+                (err.message.includes('interrupted') ||
+                  err.message.includes("user didn't interact")));
+
+            if (!isInterrupted) {
+              console.error('Playback resume error:', err);
+            }
+          } finally {
+            if (resumeRequestId === activeRequestIdRef.current) {
+              playPromiseRef.current = null;
+            }
           }
         }
       }
     }
-  }, [isPlaying, currentTrack, tracks, approvedTracks, playTrack, setupWebAudio]);
-
-  const pause = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    }
-  }, []);
+  }, [isPlaying, currentTrack, tracksWithFavorites, approvedTracks, playTrack, setupWebAudio, pause, waitForPendingPlay]);
 
   const seek = useCallback((seconds: number) => {
     if (audioRef.current) {
@@ -414,7 +642,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const skipNext = useCallback(() => {
-    const list = approvedTracks.length > 0 ? approvedTracks : tracks;
+    const list = approvedTracks.length > 0 ? approvedTracks : tracksWithFavorites;
     if (list.length === 0) return;
     if (isShuffle) {
       const randomIndex = Math.floor(Math.random() * list.length);
@@ -424,10 +652,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentIndex = currentTrack ? list.findIndex((t) => t.id === currentTrack.id) : -1;
     const nextIndex = (currentIndex + 1) % list.length;
     playTrack(list[nextIndex]);
-  }, [approvedTracks, tracks, isShuffle, currentTrack, playTrack]);
+  }, [approvedTracks, tracksWithFavorites, isShuffle, currentTrack, playTrack]);
 
   const skipPrev = useCallback(() => {
-    const list = approvedTracks.length > 0 ? approvedTracks : tracks;
+    const list = approvedTracks.length > 0 ? approvedTracks : tracksWithFavorites;
     if (list.length === 0) return;
     if (audioRef.current && audioRef.current.currentTime > 3) {
       seek(0);
@@ -436,7 +664,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentIndex = currentTrack ? list.findIndex((t) => t.id === currentTrack.id) : 0;
     const prevIndex = (currentIndex - 1 + list.length) % list.length;
     playTrack(list[prevIndex]);
-  }, [approvedTracks, tracks, currentTrack, playTrack, seek]);
+  }, [approvedTracks, tracksWithFavorites, currentTrack, playTrack, seek]);
 
   const setVolume = useCallback((vol: number) => {
     const clamped = Math.max(0, Math.min(1, vol));
@@ -474,29 +702,54 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsShuffle((prev) => !prev);
   }, []);
 
-  const toggleFavorite = useCallback((trackId: string) => {
-    setTracks((prev) =>
-      prev.map((t) => (t.id === trackId ? { ...t, isFavorite: !t.isFavorite } : t))
-    );
-    setCurrentTrack((prev) =>
-      prev && prev.id === trackId ? { ...prev, isFavorite: !prev.isFavorite } : prev
-    );
-  }, []);
+  // Server-side Favorites toggle
+  const toggleFavorite = useCallback(
+    async (trackId: string) => {
+      if (!user) {
+        // Toggle locally in state if not logged in
+        setFavoriteTrackIds((prev) =>
+          prev.includes(trackId) ? prev.filter((id) => id !== trackId) : [...prev, trackId]
+        );
+        return;
+      }
 
-  // Add custom track with local IndexedDB storage and self-hosted server persistence
+      try {
+        const res = await apiClient.favorites.toggle(user.uid, trackId);
+        setFavoriteTrackIds(res.favorites);
+      } catch (err) {
+        console.warn('Favorite toggle error:', err);
+      }
+    },
+    [user]
+  );
+
+  // 100% Server File Upload (Direct to Ubuntu filesystem & server tracks database)
   const addCustomTrack = useCallback(
-    async (trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>, audioBlob: Blob): Promise<Track> => {
-      const id = `bc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const objectUrl = URL.createObjectURL(audioBlob);
-
+    async (
+      trackData: Omit<Track, 'id' | 'plays' | 'isCustomUpload'>,
+      audioFile: Blob | File
+    ): Promise<Track> => {
       const isAutoApproved = user?.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase();
       const initialStatus: TrackStatus = isAutoApproved ? 'approved' : 'pending_review';
 
-      const newTrack: Track = {
+      // 1. Read binary file as Base64 to upload directly to server storage
+      const fileData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(audioFile);
+      });
+
+      const filename = (audioFile as File).name || `audio_${Date.now()}.mp3`;
+
+      // 2. Upload file directly to Ubuntu Server `/uploads/`
+      const uploadRes = await apiClient.uploadAudio(filename, fileData, audioFile.type || 'audio/mpeg');
+      const serverAudioUrl = uploadRes.url;
+
+      // 3. Save track entry in server `/data/tracks.json`
+      const newTrackData: Partial<Track> = {
         ...trackData,
-        id,
-        audioUrl: objectUrl,
-        audioBlobKey: id,
+        audioUrl: serverAudioUrl,
         isCustomUpload: true,
         status: initialStatus,
         reviewerNotes: '',
@@ -507,21 +760,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ownerName: user?.displayName || trackData.artist,
       };
 
-      await saveAudioBlob(id, audioBlob);
-      await saveTrackMetadata(newTrack);
-
-      // Persist to self-hosted Ubuntu server
-      try {
-        await apiClient.tracks.create({
-          ...newTrack,
-          audioUrl: trackData.audioUrl || objectUrl,
-        });
-      } catch (err) {
-        console.warn('Notice saving track to self-hosted server:', err);
-      }
-
-      setTracks((prev) => [newTrack, ...prev.filter((t) => t.id !== id)]);
-      return newTrack;
+      const createdTrack = await apiClient.tracks.create(newTrackData);
+      setTracks((prev) => [createdTrack, ...prev.filter((t) => t.id !== createdTrack.id)]);
+      return createdTrack;
     },
     [user]
   );
@@ -546,11 +787,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
       }
 
-      const target = tracks.find((t) => t.id === trackId);
-      if (target && target.isCustomUpload) {
-        await saveTrackMetadata({ ...target, lyricsSynced: synced, lyricsRaw: rawLRC });
-      }
-
       // Sync to self-hosted Ubuntu backend
       try {
         await apiClient.tracks.update(trackId, {
@@ -561,7 +797,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.warn('Notice updating lyrics on server:', err);
       }
     },
-    [currentTrack, activeStudioTrack, tracks]
+    [currentTrack, activeStudioTrack]
   );
 
   // Review status update for Music Review Team
@@ -620,12 +856,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteTrack = useCallback(
     async (trackId: string) => {
-      const target = tracks.find((t) => t.id === trackId);
-      if (target?.isCustomUpload) {
-        await deleteAudioBlob(trackId);
-        await deleteTrackMetadata(trackId);
-      }
-
       try {
         await apiClient.tracks.delete(trackId);
       } catch (err) {
@@ -671,7 +901,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Calculate trending tracks sorted by 24h play events among approved tracks
   const trendingTracks: TrendingTrack[] = useMemo(() => {
-    const candidateTracks = approvedTracks.length > 0 ? approvedTracks : tracks;
+    const candidateTracks = approvedTracks.length > 0 ? approvedTracks : tracksWithFavorites;
     return candidateTracks
       .map((track) => {
         const plays24h = plays24hMap[track.id] || 0;
@@ -691,12 +921,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...item,
         rank: index + 1,
       }));
-  }, [approvedTracks, tracks, plays24hMap]);
+  }, [approvedTracks, tracksWithFavorites, plays24hMap]);
 
   return (
     <AudioContext.Provider
       value={{
-        tracks,
+        tracks: tracksWithFavorites,
         approvedTracks,
         trendingTracks,
         plays24hMap,

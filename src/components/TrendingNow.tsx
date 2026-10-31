@@ -99,10 +99,10 @@ export const TrendingNow: React.FC = () => {
                   playTrack(track);
                 }
               }}
-              className={`group relative flex items-center justify-between gap-3 p-3 rounded-2xl border transition-all duration-200 cursor-pointer ${
+              className={`group relative flex items-center justify-between gap-3 p-3 rounded-2xl glass-card cursor-pointer ${
                 isCurrent
-                  ? 'bg-gradient-to-r from-[#0c223f] to-[#091629] border-sky-500/80 shadow-[0_4px_20px_rgba(2,132,199,0.25)]'
-                  : 'bg-[#091423] hover:bg-[#0c1c31] border-sky-950/70 hover:border-sky-800/80'
+                  ? 'border-sky-400/80 shadow-[0_4px_24px_rgba(56,189,248,0.25)] bg-sky-950/40 ring-1 ring-sky-400/50'
+                  : ''
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -116,11 +116,11 @@ export const TrendingNow: React.FC = () => {
                 {/* Cover Art with Play Button */}
                 <div className="relative w-12 h-12 shrink-0 rounded-xl overflow-hidden bg-sky-950 border border-sky-900/50">
                   <img
-                    src={track.coverUrl || '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg'}
+                    src={track.coverUrl || '/icon.svg'}
                     alt={track.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg';
+                      (e.target as HTMLImageElement).src = '/icon.svg';
                     }}
                   />
                   <div

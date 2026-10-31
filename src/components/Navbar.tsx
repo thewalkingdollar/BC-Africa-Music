@@ -16,13 +16,19 @@ import {
   Edit3,
   TrendingUp,
   DollarSign,
+  Menu,
 } from 'lucide-react';
 import { useAudio } from '../context/AudioContext';
 import { useAuth } from '../context/AuthContext';
 import { usePlatform } from '../context/PlatformContext';
 import { ViewMode, UserRole } from '../types/music';
+import { BCAfricaLogo, LosslessAudioVector, ZambiaFlagVector } from './icons/VectorIcons';
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  onToggleMobileSidebar?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
   const {
     activeView,
     setActiveView,
@@ -31,6 +37,8 @@ export const Navbar: React.FC = () => {
     setSearchQuery,
     tracks,
     openArtistProfile,
+    selectedGenre,
+    setSelectedGenre,
   } = useAudio();
 
   const {
@@ -109,42 +117,63 @@ export const Navbar: React.FC = () => {
           <span>{settings.announcementText}</span>
         </div>
       )}
-      <header className="sticky top-0 z-40 bg-[#070e17]/95 backdrop-blur-md border-b border-sky-950/60 px-4 lg:px-8 py-3">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 md:gap-8">
-        {/* Zone 1: Brand Lockup with Official Logo */}
-        <div
-          onClick={() => setActiveView('discover')}
-          className="flex items-center gap-3 cursor-pointer group shrink-0"
-        >
-          <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-sky-950/40 p-0.5 border border-sky-500/30 shadow-[0_0_15px_rgba(2,132,199,0.25)] transition-transform group-hover:scale-105">
-            <img
-              src="/assets/aistudio/e8cdafe3a5e2c0c1-blue-africa-logo_3aeaa8bc.jpg"
-              alt="BC Africa Music Logo"
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-bold tracking-tight text-white flex items-center gap-1.5 whitespace-nowrap">
-              <span className="text-sky-400">BC</span> Africa <span className="font-light text-sky-200">Music</span>
-            </span>
-            <span className="text-[10px] text-sky-400/80 uppercase tracking-widest font-mono">Stream & Sync</span>
+      <header className="sticky top-0 z-40 glass-panel border-b border-white/10 px-3 lg:px-8 py-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.25)]">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 md:gap-8">
+        {/* Zone 1: Mobile Hamburger & Brand Lockup */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {onToggleMobileSidebar && (
+            <button
+              onClick={onToggleMobileSidebar}
+              className="md:hidden p-2 text-slate-300 hover:text-white glass-pill hover:bg-white/15 rounded-xl transition-colors cursor-pointer"
+              title="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5 text-sky-400" />
+            </button>
+          )}
+
+          <div
+            onClick={() => setActiveView('discover')}
+            className="flex items-center gap-2.5 cursor-pointer group"
+          >
+            <div className="relative">
+              <img
+                src="./bc_africa_logo_fixed_v2.png"
+                alt="BC Africa"
+                className="w-10 h-10 object-contain drop-shadow-[0_2px_8px_rgba(74,159,214,0.35)] transition-transform group-hover:scale-105"
+                onError={(e) => {
+                  // Fallback to vector icon if image cannot be rendered
+                  (e.target as HTMLElement).style.display = 'none';
+                  const fb = (e.target as HTMLElement).nextElementSibling;
+                  if (fb) (fb as HTMLElement).style.display = 'block';
+                }}
+              />
+              <div style={{ display: 'none' }}>
+                <BCAfricaLogo size={36} className="transition-transform group-hover:scale-105" />
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-base sm:text-lg font-extrabold tracking-tight text-white flex items-center gap-1 whitespace-nowrap">
+                <span className="text-[#4A9FD6]">BC</span> AFRICA <span className="font-light text-[#5AA1D2] text-xs sm:text-sm">Studio</span>
+              </span>
+              <span className="text-[9px] text-[#5AA1D2]/90 uppercase tracking-widest font-mono">Stream & Sync</span>
+            </div>
           </div>
         </div>
 
         {/* Search Bar */}
         <div className="relative flex-1 max-w-md hidden md:block">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-sky-400/60" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A9FD6]" />
           <input
             type="text"
             placeholder="Search tracks, artists, or lyrics..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#0c1829] border border-sky-900/50 rounded-full pl-9 pr-4 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition-all"
+            className="w-full glass-input rounded-full pl-9 pr-4 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-[#4A9FD6] focus:ring-2 focus:ring-[#4A9FD6]/40 transition-all"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-300 hover:text-white"
             >
               ×
             </button>
@@ -167,7 +196,7 @@ export const Navbar: React.FC = () => {
                     isActive
                       ? isSuper
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
-                        : 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)]'
+                        : 'bg-[#4A9FD6]/15 text-[#5AA1D2] border border-[#4A9FD6]/30 shadow-[0_0_12px_rgba(74,159,214,0.2)]'
                       : 'text-slate-300 hover:text-white hover:bg-white/5'
                   }`}
                 >
@@ -179,7 +208,7 @@ export const Navbar: React.FC = () => {
                     </span>
                   )}
                   {item.id === 'my-uploads' && tracks.filter((t) => t.isCustomUpload).length > 0 && (
-                    <span className="ml-0.5 text-[10px] bg-sky-950 text-sky-300 px-1.5 py-0.2 rounded-full border border-sky-800/60 font-mono">
+                    <span className="ml-0.5 text-[10px] bg-slate-900 text-[#5AA1D2] px-1.5 py-0.2 rounded-full border border-[#4A9FD6]/40 font-mono">
                       {tracks.filter((t) => t.isCustomUpload).length}
                     </span>
                   )}
@@ -207,7 +236,7 @@ export const Navbar: React.FC = () => {
 
           <button
             onClick={handleUploadClick}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 rounded-lg shadow-[0_0_16px_rgba(2,132,199,0.35)] transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-semibold text-white bg-[#3A8BC2] hover:bg-[#4A9FD6] rounded-lg shadow-[0_0_16px_rgba(74,159,214,0.35)] transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer"
           >
             <Upload className="w-4 h-4" />
             <span className="hidden sm:inline">Upload Track</span>
@@ -219,9 +248,9 @@ export const Navbar: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="flex items-center gap-2 bg-[#0c1829] hover:bg-[#11233d] border border-sky-900/60 rounded-xl px-2.5 py-1.5 transition-colors cursor-pointer"
+                className="flex items-center gap-2 glass-card hover:bg-white/10 border-white/15 rounded-xl px-2.5 py-1.5 transition-colors cursor-pointer"
               >
-                <div className="w-7 h-7 rounded-lg bg-sky-600 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white text-xs font-bold overflow-hidden shadow-sm">
                   {user.photoURL ? (
                     <img src={user.photoURL} alt={user.displayName || 'User'} className="w-full h-full object-cover" />
                   ) : (
@@ -260,18 +289,18 @@ export const Navbar: React.FC = () => {
                       : 'Listener'}
                   </span>
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-300" />
               </button>
 
               {/* Profile Dropdown Menu */}
               {showProfileMenu && (
-                <div className="absolute right-0 top-12 w-72 bg-[#081322] border border-sky-900/80 rounded-2xl p-4 shadow-2xl z-50 animate-in fade-in duration-150">
-                  <div className="pb-3 border-b border-sky-950">
+                <div className="absolute right-0 top-12 w-72 glass-panel-elevated border border-white/20 rounded-2xl p-4 shadow-2xl z-50 animate-in fade-in duration-150">
+                  <div className="pb-3 border-b border-white/10">
                     <p className="text-xs font-bold text-white truncate">
                       {profile?.displayName || user.displayName || 'BC Africa User'}
                     </p>
-                    <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase bg-sky-950 border border-sky-800 text-sky-300">
+                    <p className="text-[11px] text-slate-300 truncate">{user.email}</p>
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase glass-pill border border-white/15 text-sky-300">
                       <Shield className="w-3 h-3 text-sky-400" />
                       <span>Role: {role}</span>
                     </div>
@@ -393,8 +422,41 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick Genre Filter Bar */}
+      <div className="max-w-7xl mx-auto mt-2 pt-2 border-t border-sky-950/40 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+        {[
+          { label: 'All Music', value: 'all' },
+          { label: 'Zed Beats', value: 'Zed Beats', isZambia: true },
+          { label: 'Afrobeats', value: 'Afrobeats' },
+          { label: 'Amapiano', value: 'Amapiano' },
+          { label: 'Afro-Fusion', value: 'Afro-Fusion' },
+          { label: 'Gospel & Soul', value: 'Gospel' },
+        ].map((genre) => {
+          const isSelected = selectedGenre === genre.value;
+          return (
+            <button
+              key={genre.label}
+              onClick={() => {
+                setSelectedGenre(genre.value);
+                if (activeView !== 'library' && activeView !== 'discover') {
+                  setActiveView('library');
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                isSelected
+                  ? 'bg-sky-500 text-white shadow-[0_0_12px_rgba(2,132,199,0.4)]'
+                  : 'bg-sky-950/40 text-slate-300 hover:text-white hover:bg-sky-900/50 border border-sky-900/40'
+              }`}
+            >
+              {genre.isZambia && <ZambiaFlagVector size={14} />}
+              <span>{genre.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Mobile Search Bar */}
-      <div className="mt-2.5 md:hidden">
+      <div className="mt-2 md:hidden">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-sky-400/60" />
           <input
