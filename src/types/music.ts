@@ -27,6 +27,10 @@ export interface Track {
   ownerEmail?: string;
   ownerName?: string;
   country?: string;
+  bpm?: number;
+  musicalKey?: string;
+  sampleRate?: string;
+  metadataSource?: 'auto-from-file' | 'manual-fallback';
   // Quality & Editorial Review workflow
   status?: TrackStatus;
   reviewerNotes?: string;

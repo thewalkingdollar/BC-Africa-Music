@@ -743,13 +743,31 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const filename = (audioFile as File).name || `audio_${Date.now()}.mp3`;
 
       // 2. Upload file directly to Ubuntu Server `/uploads/`
-      const uploadRes = await apiClient.uploadAudio(filename, fileData, audioFile.type || 'audio/mpeg');
+      const uploadRes = await apiClient.uploadAudio(
+        filename,
+        fileData,
+        audioFile.type || 'audio/mpeg',
+        {
+          bpm: trackData.bpm,
+          key: trackData.musicalKey,
+          musicalKey: trackData.musicalKey,
+        }
+      );
       const serverAudioUrl = uploadRes.url;
 
       // 3. Save track entry in server `/data/tracks.json`
+      const effectiveBpm = uploadRes.bpm || trackData.bpm;
+      const effectiveKey = uploadRes.musicalKey || uploadRes.key || trackData.musicalKey;
+      const effectiveSource = uploadRes.metadataSource || trackData.metadataSource || (effectiveBpm ? 'auto-from-file' : 'manual-fallback');
+
       const newTrackData: Partial<Track> = {
         ...trackData,
         audioUrl: serverAudioUrl,
+        bpm: effectiveBpm,
+        musicalKey: effectiveKey,
+        sampleRate: uploadRes.sampleRate || trackData.sampleRate || '44.1kHz',
+        metadataSource: effectiveSource,
+        duration: uploadRes.duration ? Math.round(uploadRes.duration) : (trackData.duration || 180),
         isCustomUpload: true,
         status: initialStatus,
         reviewerNotes: '',

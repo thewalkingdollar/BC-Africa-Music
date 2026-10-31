@@ -23,6 +23,8 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.5.0",
+    "music-metadata": "^12.3.3",
+    "music-metadata-browser": "^2.5.11",
     "pdf-lib": "^1.17.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
